@@ -1,0 +1,219 @@
+{
+  "case_metadata": {
+    "case_name": "TechFlow Group 跨境电商 Q1 2026 — 母子公司双视角",
+    "scenario": "中国深圳母公司 + 香港中间控股 + 英国子公司 (B2C 跨境电商)",
+    "purpose": "测试跨境关联交易下的 UK VAT 9-Box 计算 + Transfer Pricing + DAC6 报告",
+    "created_date": "2026-04-15",
+    "version": "2.0 — Cross-Border Related Party Edition"
+  },
+  "group_structure": {
+    "ultimate_parent": {
+      "name_en": "Shenzhen TechFlow Technology Co., Ltd.",
+      "name_zh": "深圳拓弗科技有限公司",
+      "country": "CN",
+      "tax_id": "91440300MA5DC9X",
+      "tax_id_type": "UnifiedSocialCreditCode",
+      "vat_taxpayer_type": "General Taxpayer (一般纳税人)",
+      "vat_rate_applied": 0.13,
+      "role": "Manufacturer + Export Trader + IP Holder",
+      "transfer_pricing_method": "Cost Plus 8-12% (for group services)"
+    },
+    "intermediate_holding": {
+      "name_en": "TechFlow Holdings (HK) Ltd",
+      "country": "HK",
+      "tax_id": "BR 65829100",
+      "tax_id_type": "BR (Business Registration)",
+      "role": "Regional IP Holding + Treasury Centre"
+    },
+    "uk_subsidiary": {
+      "name_en": "TechFlow Distribution Ltd",
+      "name_local": "TechFlow Distribution Ltd",
+      "country": "GB",
+      "vrn": "960606228",
+      "tax_id_type": "VRN",
+      "vat_scheme": "Standard Rate (20%)",
+      "role": "UK Distribution + Online Retailer (Amazon UK + Shopify)",
+      "incorporation_date": "2023-06-15"
+    },
+    "ownership_chain": "Shenzhen TechFlow 100% → HK TechFlow Holdings 100% → UK TechFlow Distribution Ltd",
+    "related_party_definition": "OECD Article 9 / UK CTA 2010 s.518 — common control"
+  },
+  "uk_subsidiary": {
+    "company": {
+      "name": "TechFlow Distribution Ltd",
+      "vrn": "960606228",
+      "industry": "Consumer Electronics Distribution (B2C E-commerce)",
+      "vat_scheme": "Standard Rate (20%)",
+      "period": {
+        "period_key": "25A1",
+        "label": "2026 Q1",
+        "start": "2026-01-01",
+        "end": "2026-03-31",
+        "due": "2026-05-07"
+      }
+    },
+    "sales_invoices": [
+      { "id": "SI-2026-001", "date": "2026-01-08", "customer": "Currys PC World", "customer_type": "third_party", "type": "domestic_b2b", "net": 12500.00, "vat": 2500.00, "gross": 15000.00 },
+      { "id": "SI-2026-002", "date": "2026-01-12", "customer": "Amazon UK Marketplace", "customer_type": "third_party", "type": "domestic_b2c", "net": 8750.00, "vat": 1750.00, "gross": 10500.00 },
+      { "id": "SI-2026-003", "date": "2026-01-15", "customer": "John Lewis Partnership", "customer_type": "third_party", "type": "domestic_b2b", "net": 18750.00, "vat": 3750.00, "gross": 22500.00 },
+      { "id": "SI-2026-004", "date": "2026-01-18", "customer": "Argos Ltd", "customer_type": "third_party", "type": "domestic_b2b", "net": 15200.00, "vat": 3040.00, "gross": 18240.00 },
+      { "id": "SI-2026-005", "date": "2026-01-22", "customer": "eBay UK Seller Hub", "customer_type": "third_party", "type": "domestic_b2c", "net": 6300.00, "vat": 1260.00, "gross": 7560.00 },
+      { "id": "SI-2026-006", "date": "2026-01-25", "customer": "Tesco Direct", "customer_type": "third_party", "type": "domestic_b2b", "net": 22000.00, "vat": 4400.00, "gross": 26400.00 },
+      { "id": "SI-2026-007", "date": "2026-01-28", "customer": "TechDealer GmbH", "customer_type": "third_party", "type": "eu_b2b", "country": "DE", "net_gbp": 12500.00, "vat": 0.00, "gross": 12500.00 },
+      { "id": "SI-2026-008", "date": "2026-02-03", "customer": "B&Q (Kingfisher)", "customer_type": "third_party", "type": "domestic_b2b", "net": 9500.00, "vat": 1900.00, "gross": 11400.00 },
+      { "id": "SI-2026-009", "date": "2026-02-08", "customer": "Halfords Group", "customer_type": "third_party", "type": "domestic_b2b", "net": 7800.00, "vat": 1560.00, "gross": 9360.00 },
+      { "id": "SI-2026-010", "date": "2026-02-12", "customer": "Shopify Store - Direct", "customer_type": "third_party", "type": "domestic_b2c", "net": 4200.00, "vat": 840.00, "gross": 5040.00 },
+      { "id": "SI-2026-011", "date": "2026-02-15", "customer": "Screwfix (Kingfisher)", "customer_type": "third_party", "type": "domestic_b2b", "net": 11300.00, "vat": 2260.00, "gross": 13560.00 },
+      { "id": "SI-2026-012", "date": "2026-02-18", "customer": "ElectroFrance SAS", "customer_type": "third_party", "type": "eu_b2b", "country": "FR", "net_gbp": 15000.00, "vat": 0.00, "gross": 15000.00 },
+      { "id": "SI-2026-013", "date": "2026-02-22", "customer": "Maplin Electronics", "customer_type": "third_party", "type": "domestic_b2b", "net": 6700.00, "vat": 1340.00, "gross": 8040.00 },
+      { "id": "SI-2026-014", "date": "2026-02-25", "customer": "Boots UK Ltd", "customer_type": "third_party", "type": "domestic_b2b", "net": 8900.00, "vat": 1780.00, "gross": 10680.00 },
+      { "id": "SI-2026-015", "date": "2026-02-28", "customer": "WHSmith", "customer_type": "third_party", "type": "domestic_b2b", "net": 5400.00, "vat": 1080.00, "gross": 6480.00 },
+      { "id": "SI-2026-016", "date": "2026-03-05", "customer": "Dixons Carphone", "customer_type": "third_party", "type": "domestic_b2b", "net": 16800.00, "vat": 3360.00, "gross": 20160.00 },
+      { "id": "SI-2026-017", "date": "2026-03-08", "customer": "Very.co.uk (Shop Direct)", "customer_type": "third_party", "type": "domestic_b2c", "net": 7200.00, "vat": 1440.00, "gross": 8640.00 },
+      { "id": "SI-2026-018", "date": "2026-03-12", "customer": "ElectroSpain SL", "customer_type": "third_party", "type": "eu_b2b", "country": "ES", "net_gbp": 8750.00, "vat": 0.00, "gross": 8750.00 },
+      { "id": "SI-2026-019", "date": "2026-03-15", "customer": "AO World plc", "customer_type": "third_party", "type": "domestic_b2b", "net": 19500.00, "vat": 3900.00, "gross": 23400.00 },
+      { "id": "SI-2026-020", "date": "2026-03-18", "customer": "Studio Retail Group", "customer_type": "third_party", "type": "domestic_b2c", "net": 5100.00, "vat": 1020.00, "gross": 6120.00 },
+      { "id": "SI-2026-021", "date": "2026-03-22", "customer": "NordicTech AB", "customer_type": "third_party", "type": "eu_b2b", "country": "SE", "net_gbp": 6200.00, "vat": 0.00, "gross": 6200.00 },
+      { "id": "SI-2026-022", "date": "2026-03-25", "customer": "Wayfair UK", "customer_type": "third_party", "type": "domestic_b2b", "net": 8300.00, "vat": 1660.00, "gross": 9960.00 },
+      { "id": "SI-2026-023", "date": "2026-03-28", "customer": "OnBuy.com", "customer_type": "third_party", "type": "domestic_b2c", "net": 3600.00, "vat": 720.00, "gross": 4320.00 },
+      { "id": "SI-2026-024", "date": "2026-03-30", "customer": "Ocado Retail", "customer_type": "third_party", "type": "domestic_b2b", "net": 9800.00, "vat": 1960.00, "gross": 11760.00 },
+      { "id": "SI-2026-ZR01", "date": "2026-01-20", "customer": "Children's Toy Store", "customer_type": "third_party", "type": "zero_rated", "net": 4500.00, "vat": 0.00, "gross": 4500.00, "reason": "Children's clothing - zero rated" },
+      { "id": "SI-2026-ZR02", "date": "2026-02-28", "customer": "Book Retailer Ltd", "customer_type": "third_party", "type": "zero_rated", "net": 3200.00, "vat": 0.00, "gross": 3200.00, "reason": "Printed books - zero rated" },
+      { "id": "SI-2026-EX01", "date": "2026-03-10", "customer": "US Distributor Corp", "customer_type": "third_party", "type": "export", "country": "US", "net_gbp": 25000.00, "vat": 0.00, "gross": 25000.00, "reason": "Export outside EU - VAT exempt" }
+    ],
+    "purchase_invoices": [
+      { "id": "PI-2026-001", "date": "2026-01-05", "supplier": "DHL Supply Chain UK", "supplier_type": "third_party", "type": "domestic", "category": "logistics", "net": 3200.00, "vat": 640.00, "gross": 3840.00, "recoverable": true },
+      { "id": "PI-2026-002", "date": "2026-01-08", "supplier": "UK Packaging Solutions", "supplier_type": "third_party", "type": "domestic", "category": "materials", "net": 1500.00, "vat": 300.00, "gross": 1800.00, "recoverable": true },
+      { "id": "PI-2026-003", "date": "2026-01-12", "supplier": "Shenzhen TechFlow Technology Co., Ltd.", "supplier_type": "related_party", "type": "import", "country": "CN", "net_gbp": 85000.00, "vat": 17000.00, "gross": 102000.00, "recoverable": true, "customs_duty": 4250.00, "note": "Import from parent (China) - TP: Cost Plus 10% on cost", "tp_method": "Cost Plus", "tp_markup": 0.10, "pva_used": true, "c79_certificate": "CDS-2026-001", "dac6_hallmark": "C1(b) — Transfer pricing arrangement" },
+      { "id": "PI-2026-004", "date": "2026-01-15", "supplier": "Office Depot UK", "supplier_type": "third_party", "type": "domestic", "category": "office", "net": 850.00, "vat": 170.00, "gross": 1020.00, "recoverable": true },
+      { "id": "PI-2026-005", "date": "2026-01-18", "supplier": "British Gas Business", "supplier_type": "third_party", "type": "domestic", "category": "utilities", "net": 2100.00, "vat": 420.00, "gross": 2520.00, "recoverable": true },
+      { "id": "PI-2026-006", "date": "2026-01-22", "supplier": "BT Business", "supplier_type": "third_party", "type": "domestic", "category": "telecom", "net": 450.00, "vat": 90.00, "gross": 540.00, "recoverable": true },
+      { "id": "PI-2026-007", "date": "2026-01-25", "supplier": "UK Warehousing Ltd", "supplier_type": "third_party", "type": "domestic", "category": "logistics", "net": 5800.00, "vat": 1160.00, "gross": 6960.00, "recoverable": true },
+      { "id": "PI-2026-E01", "date": "2026-02-01", "supplier": "Anker Europe GmbH", "supplier_type": "third_party", "type": "eu_acquisition", "country": "DE", "net_gbp": 50000.00, "acquisition_vat": 10000.00, "gross": 60000.00, "recoverable": true },
+      { "id": "PI-2026-008", "date": "2026-02-05", "supplier": "Royal Mail Business", "supplier_type": "third_party", "type": "domestic", "category": "postage", "net": 1200.00, "vat": 240.00, "gross": 1440.00, "recoverable": true },
+      { "id": "PI-2026-009", "date": "2026-02-08", "supplier": "Xero Accounting Software", "supplier_type": "third_party", "type": "domestic", "category": "software", "net": 350.00, "vat": 70.00, "gross": 420.00, "recoverable": true },
+      { "id": "PI-2026-010", "date": "2026-02-10", "supplier": "Amazon Web Services", "supplier_type": "third_party", "type": "domestic", "category": "software", "net": 2800.00, "vat": 560.00, "gross": 3360.00, "recoverable": true },
+      { "id": "PI-2026-011", "date": "2026-02-12", "supplier": "Rentokil Initial", "supplier_type": "third_party", "type": "domestic", "category": "services", "net": 650.00, "vat": 130.00, "gross": 780.00, "recoverable": true },
+      { "id": "PI-2026-012", "date": "2026-02-15", "supplier": "Marketing Agency UK Ltd", "supplier_type": "third_party", "type": "domestic", "category": "marketing", "net": 4800.00, "vat": 960.00, "gross": 5760.00, "recoverable": true },
+      { "id": "PI-2026-013", "date": "2026-02-18", "supplier": "Hiscox Business Insurance", "supplier_type": "third_party", "type": "exempt", "category": "insurance", "net": 2400.00, "vat": 0.00, "gross": 2400.00, "recoverable": false, "note": "Insurance is VAT exempt" },
+      { "id": "PI-2026-014", "date": "2026-02-20", "supplier": "LinkedIn Sales Navigator", "supplier_type": "third_party", "type": "domestic", "category": "software", "net": 1200.00, "vat": 240.00, "gross": 1440.00, "recoverable": true },
+      { "id": "PI-2026-015", "date": "2026-02-22", "supplier": "Staples UK", "supplier_type": "third_party", "type": "domestic", "category": "office", "net": 680.00, "vat": 136.00, "gross": 816.00, "recoverable": true },
+      { "id": "PI-2026-E02", "date": "2026-03-01", "supplier": "ElectroComponents NL BV", "supplier_type": "third_party", "type": "eu_acquisition", "country": "NL", "net_gbp": 18500.00, "acquisition_vat": 3700.00, "gross": 22200.00, "recoverable": true },
+      { "id": "PI-2026-016", "date": "2026-03-05", "supplier": "Shenzhen TechFlow Technology Co., Ltd.", "supplier_type": "related_party", "type": "import", "country": "CN", "net_gbp": 42000.00, "vat": 8400.00, "gross": 50400.00, "recoverable": true, "customs_duty": 2100.00, "note": "Import from parent (China) - TP: Cost Plus 10%", "tp_method": "Cost Plus", "tp_markup": 0.10, "pva_used": true, "c79_certificate": "CDS-2026-002", "dac6_hallmark": "C1(b) — Transfer pricing arrangement" },
+      { "id": "PI-2026-017", "date": "2026-03-08", "supplier": "WeWork UK", "supplier_type": "third_party", "type": "domestic", "category": "rent", "net": 3200.00, "vat": 640.00, "gross": 3840.00, "recoverable": true },
+      { "id": "PI-2026-018", "date": "2026-03-10", "supplier": "Sage Accounting", "supplier_type": "third_party", "type": "domestic", "category": "software", "net": 550.00, "vat": 110.00, "gross": 660.00, "recoverable": true },
+      { "id": "PI-2026-019", "date": "2026-03-12", "supplier": "FedEx UK", "supplier_type": "third_party", "type": "domestic", "category": "logistics", "net": 2100.00, "vat": 420.00, "gross": 2520.00, "recoverable": true },
+      { "id": "PI-2026-020", "date": "2026-03-15", "supplier": "Deloitte UK", "supplier_type": "third_party", "type": "domestic", "category": "professional", "net": 8500.00, "vat": 1700.00, "gross": 10200.00, "recoverable": true },
+      { "id": "PI-2026-021", "date": "2026-03-18", "supplier": "Vodafone Business", "supplier_type": "third_party", "type": "domestic", "category": "telecom", "net": 980.00, "vat": 196.00, "gross": 1176.00, "recoverable": true },
+      { "id": "PI-2026-022", "date": "2026-03-20", "supplier": "Total Gas & Power", "supplier_type": "third_party", "type": "domestic", "category": "utilities", "net": 1650.00, "vat": 330.00, "gross": 1980.00, "recoverable": true }
+    ],
+    "expense_claims": [
+      { "id": "EXP-001", "date": "2026-01-20", "employee": "James Wilson", "category": "travel", "description": "Business trip to Birmingham trade show", "net": 450.00, "vat": 90.00, "recoverable": true, "receipt_ref": "Trainline INV-TR-8821" },
+      { "id": "EXP-002", "date": "2026-01-25", "employee": "Sarah Chen", "category": "accommodation", "description": "Hotel stay NEC Birmingham 2 nights", "net": 280.00, "vat": 56.00, "recoverable": true, "receipt_ref": "Hilton Hotels INV-HT-4451" },
+      { "id": "EXP-003", "date": "2026-02-10", "employee": "James Wilson", "category": "fuel", "description": "Business mileage reimbursement", "net": 180.00, "vat": 0.00, "recoverable": false, "note": "Mileage claim at HMRC approved rates - no VAT" },
+      { "id": "EXP-004", "date": "2026-02-15", "employee": "Sarah Chen", "category": "subsistence", "description": "Client dinner London", "net": 185.00, "vat": 37.00, "recoverable": false, "note": "Business entertainment - VAT not recoverable per HMRC" },
+      { "id": "EXP-005", "date": "2026-02-20", "employee": "David Kumar", "category": "travel", "description": "Flight to Frankfurt electronics fair", "net": 320.00, "vat": 0.00, "recoverable": false, "note": "International flight - no UK VAT" },
+      { "id": "EXP-006", "date": "2026-03-05", "employee": "James Wilson", "category": "accommodation", "description": "Hotel Manchester client visit", "net": 195.00, "vat": 39.00, "recoverable": true, "receipt_ref": "Premier Inn INV-PI-3392" },
+      { "id": "EXP-007", "date": "2026-03-12", "employee": "Sarah Chen", "category": "travel", "description": "Train to Glasgow distribution centre", "net": 165.00, "vat": 33.00, "recoverable": true, "receipt_ref": "LNER INV-LN-9912" },
+      { "id": "EXP-008", "date": "2026-03-18", "employee": "David Kumar", "category": "office_equipment", "description": "New laptop for home office", "net": 850.00, "vat": 170.00, "recoverable": true, "receipt_ref": "Apple Store INV-AP-7721" },
+      { "id": "EXP-009", "date": "2026-03-22", "employee": "James Wilson", "category": "travel", "description": "Uber business trips", "net": 145.00, "vat": 29.00, "recoverable": true, "receipt_ref": "Uber INV-UB-5541" },
+      { "id": "EXP-010", "date": "2026-03-28", "employee": "Sarah Chen", "category": "professional", "description": "Chartered Institute of Marketing membership", "net": 320.00, "vat": 64.00, "recoverable": true, "receipt_ref": "CIM INV-CIM-2219" }
+    ],
+    "reverse_charge_transactions": [
+      { "id": "RC-001", "date": "2026-02-15", "description": "Google Ads (B2B digital services from IE)", "supplier_country": "IE", "net": 5000.00, "vat_due": 1000.00, "vat_reclaimable": 1000.00, "note": "Reverse charge - Box 1 and Box 4 both +1000" }
+    ],
+    "related_party_transactions": [
+      { "id": "RPT-001", "date": "2026-01-31", "type": "management_fee", "supplier": "Shenzhen TechFlow Technology Co., Ltd.", "supplier_country": "CN", "description": "Q1 Group Management Service Fee (HQ oversight, strategy, HR policy, IP licensing coordination)", "net_gbp": 18000.00, "currency": "GBP", "vat_treatment": "outside_scope_uk_vat", "vat_box_impact": "none", "tp_method": "Cost Plus 10%", "tp_basis": "Cost+10% on HQ costs allocated to UK turnover share", "uk_ct_deductibility": "Deductible (with TP documentation)", "note": "Customer is outside UK (China) - B2B service to non-UK customer = outside scope of UK VAT per VATA 1994 s.7(3) / Place of Supply rules" },
+      { "id": "RPT-002", "date": "2026-02-28", "type": "royalty", "supplier": "TechFlow Holdings (HK) Ltd", "supplier_country": "HK", "description": "Q1 Trademark & Brand Royalty — TechFlow brand use in UK retail", "net_gbp": 6000.00, "currency": "GBP", "vat_treatment": "outside_scope_uk_vat", "vat_box_impact": "none", "tp_method": "CUP (Comparable Uncontrolled Price)", "tp_basis": "2% of UK net sales — comparable to industry royalty rates 1.5-3%", "uk_ct_deductibility": "Deductible (with TP documentation)", "note": "Royalty to HK IP holding — outside scope (B2B to non-UK). UK CT deduction allowed. Withholding tax 10% (no DTT preferential rate CN/HK→UK royalty)" },
+      { "id": "RPT-003", "date": "2026-03-31", "type": "it_service_fee", "supplier": "Shenzhen TechFlow Technology Co., Ltd.", "supplier_country": "CN", "description": "Q1 IT Service Fee (shared ERP, AWS infrastructure, data analytics platform)", "net_gbp": 7500.00, "currency": "GBP", "vat_treatment": "outside_scope_uk_vat", "vat_box_impact": "none", "tp_method": "Cost Plus 8%", "tp_basis": "Direct cost + 8% markup, allocated by user count", "uk_ct_deductibility": "Deductible (with TP documentation)", "note": "IT services received from non-UK supplier = outside scope of UK VAT. Documented service level agreement required." },
+      { "id": "RPT-004", "date": "2026-01-31", "type": "interest_on_loan", "supplier": "TechFlow Holdings (HK) Ltd", "supplier_country": "HK", "description": "Q1 Interest on shareholder loan — £500k @ 5.5% APR (LIBOR + 3.5% margin)", "net_gbp": 6875.00, "currency": "GBP", "vat_treatment": "exempt_financial_services", "vat_box_impact": "none", "tp_method": "Comparable interest rate", "tp_basis": "LIBOR 3M (1.98%) + 3.5% margin — arm's length per OECD guidance", "uk_ct_deductibility": "Deductible (with TP documentation, thin cap limits apply)", "note": "Loan interest = exempt supply (Financial Services VAT exemption). No UK VAT impact. UK CT thin cap: 30% of EBITDA for non-large companies." }
+    ],
+    "vat_adjustments": [
+      { "id": "ADJ-001", "description": "Bad debt relief - SI-2025-089 written off", "amount": 240.00, "type": "credit", "note": "Customer liquidation, debt > 6 months old" },
+      { "id": "ADJ-002", "description": "Pre-registration VAT on stock", "amount": 1850.00, "type": "credit", "note": "VAT incurred 3 months before registration" }
+    ],
+    "dac6_assessment": {
+      "applicable": true,
+      "cross_border_arrangement": true,
+      "hallmarks_triggered": [
+        { "id": "C1(b)", "description": "Transfer pricing arrangement between related parties in different jurisdictions", "affected_transactions": ["PI-2026-003", "PI-2026-016", "RPT-001", "RPT-002", "RPT-003", "RPT-004"], "reportable": true, "filing_deadline_days": 30 },
+        { "id": "C1(c)(i)", "description": "Arrangement involving transfer of IP between related parties", "affected_transactions": ["RPT-002"], "reportable": true, "filing_deadline_days": 30 },
+        { "id": "C2", "description": "Arrangement that has the effect of undermining the reporting duty (transfer pricing)", "affected_transactions": ["RPT-004"], "reportable": false, "reason": "Interest rate arm's length and within thin cap" }
+      ],
+      "main_benefit_test": "passed — arrangements have commercial rationale beyond tax",
+      "reporting_intermediary": "Deloitte UK (PI-2026-020)",
+      "filing_status": "filed_2026-04-10",
+      "hmrc_reference": "MDR-2026-Q1-001"
+    },
+    "transfer_pricing_documentation": {
+      "local_file_required": false,
+      "reason": "UK turnover < £85m — exemption from full local file. Simplified TP summary maintained.",
+      "tp_method_summary": [
+        { "transaction_type": "Import goods (PI-2026-003, 016)", "method": "Cost Plus 10%", "arm_length_test": "passed", "markup_evidence": "Comparable company analysis (CCA): consumer electronics manufacturers earn 8-12% cost+ markup" },
+        { "transaction_type": "Management services (RPT-001)", "method": "Cost Plus 10%", "arm_length_test": "passed", "markup_evidence": "OECD comparable: HQ services routine 5-15% markup" },
+        { "transaction_type": "Royalty (RPT-002)", "method": "CUP", "arm_length_test": "passed", "markup_evidence": "RoyaltyStat: consumer electronics brand royalty 1.5-3% of net sales" },
+        { "transaction_type": "IT services (RPT-003)", "method": "Cost Plus 8%", "arm_length_test": "passed", "markup_evidence": "Routine IT support services 5-12% markup range" },
+        { "transaction_type": "Interest (RPT-004)", "method": "LIBOR + margin", "arm_length_test": "passed", "markup_evidence": "Comparable bond yields for B-rated UK distributor" }
+      ],
+      "documentation_status": "complete",
+      "responsible_advisor": "Deloitte UK"
+    },
+    "permanent_establishment_risk": {
+      "china_parent_pe_in_uk": false,
+      "rationale": "China parent does not have fixed place of business in UK; management services performed in China; no UK employee of China parent; no dependent agent",
+      "uk_sub_activities_in_china": false,
+      "rationale_2": "UK sub does not have PE in China — purchases are for import, no installation/setup activities",
+      "hmrc_clearance": "not_required"
+    }
+  },
+  "china_parent_company": {
+    "company": {
+      "name": "Shenzhen TechFlow Technology Co., Ltd. (深圳拓弗科技有限公司)",
+      "tax_id": "91440300MA5DC9X",
+      "industry": "Consumer Electronics Manufacturing + Export Trading",
+      "vat_taxpayer_type": "General Taxpayer (一般纳税人)",
+      "vat_rate_applied": 0.13,
+      "export_tax_refund_rate": 0.13,
+      "period": {
+        "label": "2026 Q1",
+        "start": "2026-01-01",
+        "end": "2026-03-31"
+      },
+      "export_declaration_mode": "0110 一般贸易出口"
+    },
+    "output_vat_sales": [
+      { "id": "CN-SI-001", "date": "2026-01-12", "customer": "TechFlow Distribution Ltd (UK subsidiary)", "customer_type": "related_party", "type": "export_to_subsidiary", "net_cny": 765000.00, "vat_cny": 0.00, "export_declaration": "EXP-2026-001", "note": "出口至子公司 — 适用免税 (VAT exempt) + 退税" },
+      { "id": "CN-SI-002", "date": "2026-01-15", "customer": "广州腾达电子有限公司", "customer_type": "third_party", "type": "domestic_sale", "net_cny": 280000.00, "vat_cny": 36400.00, "note": "国内销售 13% VAT" },
+      { "id": "CN-SI-003", "date": "2026-02-01", "customer": "深圳市光明区零售商 ABC", "customer_type": "third_party", "type": "domestic_sale", "net_cny": 145000.00, "vat_cny": 18850.00, "note": "国内销售 13% VAT" },
+      { "id": "CN-SI-004", "date": "2026-02-18", "customer": "TechFlow Distribution Ltd (UK subsidiary)", "customer_type": "related_party", "type": "export_to_subsidiary", "net_cny": 720000.00, "vat_cny": 0.00, "export_declaration": "EXP-2026-002", "note": "出口至子公司" },
+      { "id": "CN-SI-005", "date": "2026-03-05", "customer": "阿里巴巴 B2B 平台买家", "customer_type": "third_party", "type": "domestic_sale", "net_cny": 320000.00, "vat_cny": 41600.00, "note": "国内销售 13% VAT" },
+      { "id": "CN-SI-006", "date": "2026-03-12", "customer": "东莞电子零售商", "customer_type": "third_party", "type": "domestic_sale", "net_cny": 185000.00, "vat_cny": 24050.00, "note": "国内销售 13% VAT" },
+      { "id": "CN-SI-007", "date": "2026-03-22", "customer": "TechFlow Distribution Ltd (UK subsidiary)", "customer_type": "related_party", "type": "export_to_subsidiary", "net_cny": 580000.00, "vat_cny": 0.00, "export_declaration": "EXP-2026-003", "note": "出口至子公司" }
+    ],
+    "input_vat_purchases": [
+      { "id": "CN-PI-001", "date": "2026-01-05", "supplier": "深圳市光明区元件厂", "type": "domestic_purchase", "category": "raw_materials", "net_cny": 280000.00, "vat_cny": 36400.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-002", "date": "2026-01-10", "supplier": "东莞包装制品有限公司", "type": "domestic_purchase", "category": "packaging", "net_cny": 45000.00, "vat_cny": 5850.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-003", "date": "2026-01-18", "supplier": "深圳能源集团", "type": "domestic_purchase", "category": "utilities", "net_cny": 28000.00, "vat_cny": 3640.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-004", "date": "2026-02-02", "supplier": "深圳市光明区元件厂", "type": "domestic_purchase", "category": "raw_materials", "net_cny": 320000.00, "vat_cny": 41600.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-005", "date": "2026-02-12", "supplier": "深圳科技园区租赁", "type": "domestic_purchase", "category": "rent", "net_cny": 65000.00, "vat_cny": 8450.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-006", "date": "2026-02-20", "supplier": "深圳市光明区元件厂", "type": "domestic_purchase", "category": "raw_materials", "net_cny": 195000.00, "vat_cny": 25350.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-007", "date": "2026-03-08", "supplier": "中国电信深圳分公司", "type": "domestic_purchase", "category": "telecom", "net_cny": 8500.00, "vat_cny": 1105.00, "fapiao_type": "数电发票" },
+      { "id": "CN-PI-008", "date": "2026-03-15", "supplier": "深圳德勤会计师事务所", "type": "domestic_purchase", "category": "professional", "net_cny": 120000.00, "vat_cny": 7800.00, "note": "Modern services 6% VAT", "fapiao_type": "数电发票" },
+      { "id": "CN-PI-009", "date": "2026-03-22", "supplier": "深圳市光明区元件厂", "type": "domestic_purchase", "category": "raw_materials", "net_cny": 240000.00, "vat_cny": 31200.00, "fapiao_type": "数电发票" }
+    ],
+    "related_party_revenue": [
+      { "id": "CN-RPT-001", "date": "2026-01-31", "customer": "TechFlow Distribution Ltd (UK)", "type": "management_service_fee", "net_cny": 162000.00, "vat_cny": 9720.00, "vat_rate": 0.06, "note": "管理服务费 — 现代服务 6% VAT" },
+      { "id": "CN-RPT-002", "date": "2026-02-28", "customer": "TechFlow Distribution Ltd (UK)", "type": "royalty", "net_cny": 54000.00, "vat_cny": 3240.00, "vat_rate": 0.06, "note": "商标使用费 — 6% VAT" },
+      { "id": "CN-RPT-003", "date": "2026-03-31", "customer": "TechFlow Distribution Ltd (UK)", "type": "it_service_fee", "net_cny": 67500.00, "vat_cny": 4050.00, "vat_rate": 0.06, "note": "IT 服务费 — 现代服务 6% VAT" }
+    ],
+    "export_tax_refund_calculation": {
+      "method": "免抵退 (Exempt, Credit, Refund)",
+      "export_sales_total_cny": 2065000.00,
+      "applicable_refund_rate": 0.13,
+      "export_vat_exempt_cny": 268450.00,
+      "input_vat_for_export_goods_cny": 215000.00,
+      "refundable_amount_cny": 215000.00,
+      "note": "征退税率一致 13% — 退税额 = 出口货物对应进项税 (no 征退税率差)"
+    }
+  }
+}

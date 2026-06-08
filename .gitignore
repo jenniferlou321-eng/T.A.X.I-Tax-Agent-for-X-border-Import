@@ -1,0 +1,127 @@
+# ────────────────────────────────────────────
+# T.A.X.I. — Tax Agent for X-border & Import
+# https://github.com/GTC2333/T.A.X.I-Tax-Agent-for-X-border-Import
+# ────────────────────────────────────────────
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+coverage.xml
+*.cover
+.hypothesis/
+
+# mypy / ruff / black
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# ===== Node / Frontend =====
+node_modules/
+.pnp
+.pnp.js
+.parcel-cache
+.npm
+.eslintcache
+.vite/
+dist/
+dist-ssr/
+*.local
+.yarn/
+
+# Logs (general)
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ===== Environment / Secrets =====
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+.tokens/
+*.pem
+*.key
+secrets/
+cookies.json
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# OS
+.Trashes
+.Spotlight-V100
+.fseventsd
+
+# ===== Local Claude Code config =====
+.claude/
+
+# ===== Project-specific =====
+# HMRC OAuth tokens (per-VRN, generated at runtime)
+.tokens/
+# Audit log dumps
+audit_logs/
+# HMRC test response fixtures
+fixtures/
+# Browser automation profiles (security risk)
+browser_profile/
+# Screenshots from any UI automation
+screenshots/
+# Real business data dumps (anonymized examples are OK)
+data/real/
+
+# ===== Submodule inner .git pointers (safety net) =====
+*/.git
