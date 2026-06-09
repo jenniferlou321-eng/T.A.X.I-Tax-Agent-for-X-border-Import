@@ -15,7 +15,12 @@ import {
   ChevronRightIcon,
   ChatBubbleOvalLeftIcon,
   BuildingOfficeIcon,
+  MagnifyingGlassIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline'
+import QuickActionButton from '../components/QuickActionButton'
+import { useDemoStore } from '../stores/demoStore'
+import { casePresets } from '../data/casePresets'
 
 interface ChatMessage {
   id: string
@@ -33,7 +38,9 @@ interface HistorySession {
   preview: string
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8765'
+// Same-origin by default (Vite dev-server proxy / static preview). Override
+// with VITE_API_BASE_URL when the API lives on a different host.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 
 function generateId() {
   return Math.random().toString(36).substring(2, 10)
@@ -67,6 +74,36 @@ export default function AgentChatPage() {
   const abortRef = useRef<AbortController | null>(null)
   const [sampleData, setSampleData] = useState<Record<string, unknown> | null>(null)
   const [sampleDataLoading, setSampleDataLoading] = useState(false)
+
+  // ── Demo Case selection (from Dashboard) ──
+  const selectedPreset = useDemoStore((s) => s.selectedPreset)
+  const currentCase = selectedPreset
+    ? casePresets.find((p) => p.id === selectedPreset)
+    : null
+
+  const handleAnalyzeData = () => {
+    if (!currentCase) {
+      alert('请先在 Dashboard 选择一个 Demo Case')
+      return
+    }
+    setInput('帮我分析目前的财务数据')
+    setTimeout(() => {
+      const form = document.querySelector('form') as HTMLFormElement
+      form?.requestSubmit()
+    }, 100)
+  }
+
+  const handleCalculateAndFile = () => {
+    if (!currentCase) {
+      alert('请先在 Dashboard 选择一个 Demo Case')
+      return
+    }
+    setInput('帮我计算本年增值税并申报')
+    setTimeout(() => {
+      const form = document.querySelector('form') as HTMLFormElement
+      form?.requestSubmit()
+    }, 100)
+  }
 
   // ── History Sidebar State ──
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -861,6 +898,33 @@ export default function AgentChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          {/* Case summary banner */}
+          {currentCase && (
+            <div className="card p-3 flex items-center gap-2 fade-in">
+              <BuildingOfficeIcon className="w-5 h-5 text-fg-muted" />
+              <p className="text-sm text-fg-muted">
+                当前 Case: <span className="font-medium text-fg">{currentCase.title}</span>
+              </p>
+            </div>
+          )}
+
+          {/* Quick action buttons */}
+          {currentCase && (
+            <div className="flex gap-2 fade-in">
+              <QuickActionButton
+                icon={<MagnifyingGlassIcon className="w-4 h-4" />}
+                label="🔍 帮我分析目前的财务数据"
+                onClick={handleAnalyzeData}
+              />
+              <QuickActionButton
+                icon={<ChartBarIcon className="w-4 h-4" />}
+                label="📊 帮我计算本年增值税并申报"
+                onClick={handleCalculateAndFile}
+                variant="primary"
+              />
+            </div>
+          )}
+
           {messages.map((msg) => (
             <div
               key={msg.id}
