@@ -34,4 +34,7 @@ def load_demo_case(case_id: str) -> ImportResult:
             f"demo case {case_id!r} not found. available: {available}"
         )
     raw = json.loads(file_path.read_text(encoding="utf-8"))
-    return ImportResult.model_validate(raw)
+    # pydantic v1/v2 compat
+    if hasattr(ImportResult, "model_validate"):
+        return ImportResult.model_validate(raw)
+    return ImportResult.parse_obj(raw)

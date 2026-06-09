@@ -1,0 +1,6 @@
+txn_date,txn_type,counterparty,net,vat,gross,vat_rate,tax_code
+2026-01-10,sale,ACME Corp,1000.00,200.00,1200.00,0.20,T1
+2026-01-15,sale,Beta Ltd,500.00,100.00,600.00,0.20,T1
+2026-01-20,sale,Gamma Inc,0.00,0.00,0.00,0.00,T0
+2026-01-25,purchase,Office Supplies,200.00,40.00,240.00,0.20,T1
+2026-01-30,purchase,Utilities Co,100.00,20.00,120.00,0.20,T1
