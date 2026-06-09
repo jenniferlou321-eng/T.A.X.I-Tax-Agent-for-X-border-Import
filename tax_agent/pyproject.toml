@@ -30,3 +30,8 @@ dev = [
     "pytest-httpx>=0.30",
     "ruff>=0.3",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
