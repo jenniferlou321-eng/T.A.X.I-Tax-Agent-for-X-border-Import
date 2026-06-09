@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from .config import FilingConfig
 from .models.tax_data import TaxData, TaxType
@@ -14,9 +16,15 @@ from .models.results import (
     FilingStatus, FilingResult, FilingError, StageResult, FilingPayload,
     ValidationError, StatusResult,
 )
+from .models.erp_models import ImportResult
 from .services.state_machine import StateMachine
 from .services.audit_log import AuditLog
 from .jurisdictions import JurisdictionAdapter
+from .erp.erp_samples_loader import load_demo_case, DemoCaseNotFoundError
+from .erp.csv_parser import parse_csv, CsvParseError
+from .erp.audit_events import (
+    ERP_IMPORT_STARTED, ERP_IMPORT_PARSED, ERP_IMPORT_FAILED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +41,13 @@ class Orchestrator:
         adapter: JurisdictionAdapter,
         tax_type: TaxType,
         data: TaxData,
+        import_payload: Optional[dict] = None,
     ) -> FilingResult:
-        """执行完整申报管线"""
+        """执行完整申报管线。import_payload 形如:
+           {"source": "demo", "case_id": "techflow_q1_2026"}
+           或
+           {"source": "csv", "csv_bytes_b64": "..."}
+        """
         filing_id = self._generate_filing_id(
             adapter.country_code, tax_type, data.period.period_key
         )
@@ -50,6 +63,24 @@ class Orchestrator:
         })
         result.audit_trail = self.audit.get_trail(filing_id)
         result.status = StateMachine.transition(FilingStatus.PENDING, FilingStatus.IN_PROGRESS)
+
+        # ── [0] IMPORT (新加 — v0) ──
+        if import_payload is not None:
+            ir = await self._stage_import(filing_id, data, import_payload)
+            if ir is None:
+                # import 失败，pipeline 终止
+                result.status = StateMachine.transition(FilingStatus.IN_PROGRESS, FilingStatus.ERROR)
+                result.errors.append(FilingError(
+                    code="IMPORT_FAILED",
+                    message="ERP import stage failed; see audit log",
+                    stage="IMPORT",
+                    recoverable=False,
+                    retry_count=0,
+                ))
+                self.audit.record(filing_id, "END", "pipeline_aborted_import_failed", {})
+                self.audit.persist(filing_id)
+                result.audit_trail = self.audit.get_trail(filing_id)
+                return result
 
         # ── [1] PRECHECK ──
         precheck_ok = await self._stage_precheck(result, filing_id, adapter, tax_type, data)
@@ -390,6 +421,64 @@ class Orchestrator:
         self.audit.record(filing_id, "TRACK", "timeout", {
             "timeout_hours": self.config.track_timeout_hours,
         })
+
+    async def _stage_import(
+        self, filing_id: str, data: TaxData, payload: dict,
+    ) -> Optional[ImportResult]:
+        """新阶段：解析 demo case / CSV → ImportResult，写入 data.metadata。
+
+        Returns:
+            ImportResult on success, None on failure (audit log already recorded).
+        """
+        source = payload.get("source")
+        self.audit.record(filing_id, "IMPORT", ERP_IMPORT_STARTED, {"source": source})
+        try:
+            if source == "demo":
+                case_id = payload.get("case_id")
+                if not case_id:
+                    raise ValueError("case_id is required for source='demo'")
+                ir = load_demo_case(case_id)
+            elif source == "csv":
+                csv_b64 = payload.get("csv_bytes_b64")
+                if not csv_b64:
+                    raise ValueError("csv_bytes_b64 is required for source='csv'")
+                csv_bytes = base64.b64decode(csv_b64)
+                if len(csv_bytes) > 10 * 1024 * 1024:
+                    raise ValueError("file exceeds 10MB limit")
+                ir = parse_csv(csv_bytes, profile=payload.get("profile"))
+            else:
+                raise ValueError(f"unknown import source: {source!r}")
+        except (DemoCaseNotFoundError, CsvParseError, ValueError, KeyError) as e:
+            self.audit.record(filing_id, "IMPORT", ERP_IMPORT_FAILED, {"error": str(e), "source": source})
+            return None
+
+        # 写入 TaxData.metadata (Pydantic v1/v2 compat shim)
+        data.metadata["erp_provided_boxes"] = (
+            ir.erp_provided_boxes.model_dump(mode="json")
+            if hasattr(ir.erp_provided_boxes, "model_dump")
+            else ir.erp_provided_boxes.dict()
+        )
+        data.metadata["sales_transactions"] = [
+            s.model_dump(mode="json") if hasattr(s, "model_dump") else s.dict()
+            for s in ir.sales
+        ]
+        data.metadata["purchase_transactions"] = [
+            p.model_dump(mode="json") if hasattr(p, "model_dump") else p.dict()
+            for p in ir.purchases
+        ]
+        data.metadata["source"] = ir.source_profile
+        data.metadata["compute_mode"] = data.metadata.get("compute_mode", "reconcile")
+        data.metadata["import_warnings"] = ir.warnings
+        data.metadata["import_rejected_rows"] = [dict(r) for r in ir.rejected_rows]
+
+        self.audit.record(filing_id, "IMPORT", ERP_IMPORT_PARSED, {
+            "source_profile": ir.source_profile,
+            "sales_count": len(ir.sales),
+            "purchases_count": len(ir.purchases),
+            "warnings_count": len(ir.warnings),
+            "rejected_count": len(ir.rejected_rows),
+        })
+        return ir
 
     # ── Helpers ──
 
