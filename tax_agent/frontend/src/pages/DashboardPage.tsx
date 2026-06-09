@@ -14,6 +14,8 @@ import {
 import { api } from '../api/client'
 import type { FilingResult } from '../types'
 import CasePresetCard from '../components/CasePresetCard'
+import ErpConnectionToggle from '../components/ErpConnectionToggle'
+import ClearDataButton from '../components/ClearDataButton'
 import { casePresets, type CasePreset } from '../data/casePresets'
 import { useDemoStore } from '../stores/demoStore'
 
@@ -98,10 +100,18 @@ function EmptyState() {
 function DashboardPage() {
   const navigate = useNavigate()
   const setSelectedPreset = useDemoStore((s) => s.setSelectedPreset)
+  const selectedPreset = useDemoStore((s) => s.selectedPreset)
 
   const handleLoadCase = (preset: CasePreset) => {
     setSelectedPreset(preset.id)
     navigate('/filings/new', { state: { presetId: preset.id } })
+  }
+
+  const handleSwitchCase = (preset: CasePreset) => {
+    if (window.confirm(`切换到 "${preset.title}"？当前数据将被清空。`)) {
+      setSelectedPreset(null)
+      handleLoadCase(preset)
+    }
   }
 
   const { data: filingsRes, isLoading } = useQuery({
@@ -122,12 +132,44 @@ function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Dashboard 控件三件套 (v0 修订) */}
+      <div className="flex items-center justify-between gap-4 fade-in">
+        <div className="flex-1">
+          <ErpConnectionToggle />
+        </div>
+        <ClearDataButton />
+      </div>
+
+      {selectedPreset && (
+        <div className="card p-4 flex items-center justify-between fade-in">
+          <p className="text-sm text-fg-muted">
+            已加载 Case: <span className="font-medium text-fg">
+              {casePresets.find(p => p.id === selectedPreset)?.title}
+            </span>
+          </p>
+          <button
+            onClick={() => {
+              const cur = casePresets.find(p => p.id === selectedPreset)
+              if (cur) handleSwitchCase(cur)
+            }}
+            className="btn btn-sm btn-ghost"
+          >
+            切换 Case
+          </button>
+        </div>
+      )}
+
       {/* Quick Demo Scenarios */}
       <div className="fade-in">
         <h2 className="text-lg font-semibold text-fg mb-3">快速演示场景</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {casePresets.map((preset) => (
-            <CasePresetCard key={preset.id} preset={preset} onLoad={handleLoadCase} />
+            <CasePresetCard
+              key={preset.id}
+              preset={preset}
+              onLoad={preset.id === selectedPreset ? handleSwitchCase : handleLoadCase}
+              isSelected={preset.id === selectedPreset}
+            />
           ))}
         </div>
       </div>
