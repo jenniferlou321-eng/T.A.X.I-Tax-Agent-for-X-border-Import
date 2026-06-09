@@ -75,6 +75,8 @@ class CalculationResult:
     breakdown: list[BreakdownItem] = field(default_factory=list)
     deductions: list[DeductionItem] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    discrepancy_report: Optional["ReconciliationDelta"] = None  # 新加
+    compute_mode: str = "recompute"  # 新加
 
 
 @dataclass

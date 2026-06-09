@@ -24,8 +24,8 @@ class JurisdictionAdapter(ABC):
         ...
 
     @abstractmethod
-    def calculate(self, tax_type: TaxType, data: TaxData) -> CalculationResult:
-        """计算应纳税额"""
+    def calculate(self, tax_type, data, mode: str = "recompute") -> CalculationResult:
+        """mode='reconcile' 时返回 discrepancy_report（v0 新增）"""
         ...
 
     @abstractmethod
