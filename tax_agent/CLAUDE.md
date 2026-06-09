@@ -55,28 +55,28 @@ tax_agent/
 ## Development Commands
 
 ```bash
-# Backend
-conda activate taxagent
+# Backend (FastAPI, port 8765)
 cd tax_agent
-pip install -e ".[server,dev]"
-./start_backend.sh                # port 8765
-# OR (when the flat layout breaks uvicorn's import resolution):
+./start_backend.sh                  # path-agnostic — works on macOS dev and Linux servers
+# or, if the `python -c "import tax_agent"` smoke check fails:
 python run_backend.py
+# Honour $PORT and $HOST env vars to override (e.g. PORT=9001).
+
+# Frontend (port 9000)
+# In dev (HMR + /api proxy to 8765):
+cd tax_agent/frontend && npm run dev
+# Production-like (built dist/, no proxy — use a public tunnel to forward /api):
+cd tax_agent && ./scripts/serve_frontend_9000.sh
 
 # Lint
 ruff check .
 
 # Tests
 pytest                              # tests/ — currently minimal
-
-# Frontend (separate terminal)
-cd tax_agent/frontend
-npm install
-npm run dev                         # port 5173
 ```
 
 API docs: <http://localhost:8765/docs>
-Frontend: <http://localhost:5173>
+Frontend: <http://localhost:9000> (Vite dev server, vite preview, or `scripts/serve_frontend_9000.sh` all use this port)
 
 ---
 
@@ -194,6 +194,9 @@ Import from `tax_agent.models`.
 | Add an agent tool | Add async method to `AgentToolSet` subclass + entry in `get_tool_metadata()` |
 | Add a frontend page | Route in `frontend/src/App.tsx` + page in `frontend/src/pages/` |
 | Read HMRC OAuth helper | `scripts/` (manual OAuth flow) |
+| **Deploy frontend on port 9000 with public access** | [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md) — covers Vite proxy config, the `serve_frontend_9000.sh` static server, and Cloudflare Tunnel / nginx recipes. |
+| **Add CSV profile** | `tax_agent/erp/profiles.py` (新 class + 注册到 `_PROFILES`) |
+| **Add demo case** | 写 JSON 到 `data/erp_samples/<id>.json` |
 
 ---
 
