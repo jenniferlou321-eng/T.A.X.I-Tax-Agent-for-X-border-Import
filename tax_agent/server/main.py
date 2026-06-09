@@ -23,8 +23,12 @@ def create_app() -> FastAPI:
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        # Default Vite dev/preview port for T.A.X.I. (port 9000).
+        "http://localhost:9000",
+        "http://127.0.0.1:9000",
     ]
-    # 允许从环境变量追加额外 origin
+    # 允许从环境变量追加额外 origin（生产环境把公网域名加进来，逗号分隔）
+    # 例：CORS_ORIGINS="https://tax.example.com,https://tax-staging.example.com"
     extra = os.environ.get("CORS_ORIGINS", "")
     if extra:
         origins.extend([o.strip() for o in extra.split(",") if o.strip()])
@@ -59,11 +63,13 @@ def create_app() -> FastAPI:
 
     # 注册路由
     from .routers import jurisdictions, filings, channel, users
+    from .erp import router as erp_router
     app.include_router(jurisdictions.router, prefix="/api")
     app.include_router(filings.router, prefix="/api")
     app.include_router(channel.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
     app.include_router(agent_router.router, prefix="/api")
+    app.include_router(erp_router)  # 新加这一行 (router 自带 prefix="/erp")
 
     @app.get("/health")
     async def health_check():
