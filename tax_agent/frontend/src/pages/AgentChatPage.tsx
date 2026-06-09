@@ -19,8 +19,13 @@ import {
   ChartBarIcon,
 } from '@heroicons/react/24/outline'
 import QuickActionButton from '../components/QuickActionButton'
+import InvoiceMultiSelectPanel from '../components/InvoiceMultiSelectPanel'
+import ErrorTableCard from '../components/ErrorTableCard'
+import NineBoxDiffTable from '../components/NineBoxDiffTable'
 import { useDemoStore } from '../stores/demoStore'
 import { casePresets } from '../data/casePresets'
+import { api } from '../api/client'
+import type { ImportResult, ReconciliationDelta, ERPNineBox } from '../types'
 
 interface ChatMessage {
   id: string
@@ -74,6 +79,9 @@ export default function AgentChatPage() {
   const abortRef = useRef<AbortController | null>(null)
   const [sampleData, setSampleData] = useState<Record<string, unknown> | null>(null)
   const [sampleDataLoading, setSampleDataLoading] = useState(false)
+  const [showInvoicePanel, setShowInvoicePanel] = useState<{ type: 'sale' | 'purchase' } | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [lastDiff, setLastDiff] = useState<{ erp: ERPNineBox; taxi: ERPNineBox; delta: ReconciliationDelta } | null>(null)
 
   // ── Demo Case selection (from Dashboard) ──
   const selectedPreset = useDemoStore((s) => s.selectedPreset)
@@ -165,6 +173,15 @@ export default function AgentChatPage() {
       loadHistory()
     }
   }, [historyOpen, loadHistory])
+
+  // ── Load Case Data when a preset is selected ──
+  useEffect(() => {
+    if (selectedPreset && !importResult) {
+      api.erp.getCase(selectedPreset)
+        .then(setImportResult)
+        .catch((err) => console.error('Failed to load case:', err))
+    }
+  }, [selectedPreset, importResult])
 
   // ── Load Session Messages ──
   const loadSession = async (sid: string) => {
@@ -925,6 +942,22 @@ export default function AgentChatPage() {
             </div>
           )}
 
+          {/* ERP Panel + Diff rendering (Task 16) */}
+          {showInvoicePanel && importResult && (
+            <InvoiceMultiSelectPanel
+              invoices={showInvoicePanel.type === 'sale' ? importResult.sales : importResult.purchases}
+              invoiceType={showInvoicePanel.type}
+              onSend={(ids) => {
+                setShowInvoicePanel(null)
+                const idList = ids.join(', ')
+                setInput(`我选了这些发票: ${idList}`)
+              }}
+              onClose={() => setShowInvoicePanel(null)}
+            />
+          )}
+
+          {lastDiff && <NineBoxDiffTable erpBoxes={lastDiff.erp} taxiBoxes={lastDiff.taxi} delta={lastDiff.delta} />}
+
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -999,6 +1032,14 @@ export default function AgentChatPage() {
                 ✅ 已加载: TechFlow Distribution Ltd 2026 Q1
               </span>
             )}
+            <button
+              onClick={() => setShowInvoicePanel({ type: 'sale' })}
+              className="btn btn-sm btn-ghost"
+              disabled={!importResult}
+              title="开发演示用: 打开发票多选面板"
+            >
+              📋 选择发票 (dev)
+            </button>
           </div>
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
             <div className="flex-1 relative">
