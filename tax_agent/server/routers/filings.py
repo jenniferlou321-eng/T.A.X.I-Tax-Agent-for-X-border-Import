@@ -113,6 +113,8 @@ async def preview_filing(req: FilingRequest, request: Request):
             ],
         },
         "can_submit": report.is_valid,
+        "audit_trail": [],
+        "import_summary": None,
     }
 
 
@@ -151,6 +153,23 @@ async def submit_filing(req: FilingRequest, request: Request):
             }
             for k, v in result.stage_results.items()
         },
+        "audit_trail": [
+            {
+                "stage": e.stage,
+                "action": e.action,
+                "detail": e.detail,
+                "timestamp": e.timestamp.isoformat(),
+            }
+            for e in result.audit_trail
+        ],
+        "import_summary": {
+            "source": data.metadata.get("source"),
+            "compute_mode": data.metadata.get("compute_mode", "reconcile"),
+            "sales_count": len(data.metadata.get("sales_transactions", [])),
+            "purchases_count": len(data.metadata.get("purchase_transactions", [])),
+            "import_warnings": data.metadata.get("import_warnings", []),
+            "import_rejected_rows_count": len(data.metadata.get("import_rejected_rows", [])),
+        } if data.metadata.get("source") else None,
         "jurisdiction": req.jurisdiction,
         "tax_type": req.tax_type,
         "period": req.period.model_dump(),
