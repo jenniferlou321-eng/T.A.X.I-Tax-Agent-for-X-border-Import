@@ -204,6 +204,96 @@ class UKVATAgentToolSet(AgentToolSet):
         except Exception as e:
             return _tool_error(str(e))
 
+    # ── ERP 集成 MCP tools (v0 新加) ──
+
+    async def ingest_erp_data(
+        self,
+        source: str,
+        case_id: Optional[str] = None,
+        csv_base64: Optional[str] = None,
+        profile: Optional[str] = None,
+    ) -> dict:
+        """MCP tool: 加载 demo case 或解析 CSV base64。
+
+        Returns: ImportResult (Pydantic dict) + 推荐 case 列表（如 case_id 不存在）。
+        """
+        from tax_agent.erp.erp_samples_loader import (
+            list_demo_cases,
+            load_demo_case,
+            DemoCaseNotFoundError,
+        )
+        from tax_agent.erp.csv_parser import parse_csv, CsvParseError
+        import base64
+
+        try:
+            if source == "demo":
+                if not case_id:
+                    return _tool_error(
+                        "case_id is required for source='demo'",
+                        detail={"available_cases": list_demo_cases()},
+                    )
+                try:
+                    ir = load_demo_case(case_id)
+                except DemoCaseNotFoundError as e:
+                    return _tool_error(
+                        str(e),
+                        detail={"available_cases": list_demo_cases()},
+                    )
+            elif source == "csv":
+                if not csv_base64:
+                    return _tool_error("csv_base64 is required for source='csv'")
+                csv_bytes = base64.b64decode(csv_base64)
+                if len(csv_bytes) > 10 * 1024 * 1024:
+                    return _tool_error("file exceeds 10MB limit")
+                try:
+                    ir = parse_csv(csv_bytes, profile=profile)
+                except CsvParseError as e:
+                    return _tool_error(f"CSV parse error: {e}")
+            else:
+                return _tool_error(f"unknown source: {source!r}")
+        except Exception as e:
+            return _tool_error(f"unexpected error: {e}")
+
+        # Serialize with v1/v2 compat
+        if hasattr(ir, "model_dump"):
+            ir_dict = ir.model_dump(mode="json")
+        else:
+            ir_dict = ir.dict()
+            # pydantic v1: convert Decimal/date to strings
+            from datetime import date
+            from decimal import Decimal
+            ir_dict = json.loads(json.dumps(ir_dict, default=str))
+
+        return _tool_ok({
+            "success": True,
+            "import_result": ir_dict,
+            "summary": {
+                "source_profile": ir.source_profile,
+                "source_hash": ir.source_hash,
+                "sales_count": len(ir.sales),
+                "purchases_count": len(ir.purchases),
+                "warnings_count": len(ir.warnings),
+                "rejected_count": len(ir.rejected_rows),
+            },
+        })
+
+    async def filter_invoices(
+        self,
+        txn_type: Optional[str] = None,  # "sale" | "purchase" | None
+        flagged_only: bool = False,  # 只返有差异的发票（v0 暂未实现，用 reserved）
+        invoice_ids: Optional[list[str]] = None,  # 限制到这些 ID
+    ) -> dict:
+        """MCP tool: 列出当前 session 里的发票（用 session.uploaded_data 缓存）。
+
+        v0 简化：从 import_result 缓存读，不查 DB。
+        """
+        # v0 暂不接入 session 缓存 → 返空 + 提示
+        return _tool_ok({
+            "success": True,
+            "invoices": [],
+            "note": "v0: InvoiceMultiSelectPanel loads from /api/erp/cases/{case_id} directly, not via this tool",
+        })
+
     # ── 提交类工具 ──
 
     async def submit_return(self, taxpayer_id: str, period_key: str, return_data: dict) -> dict:
@@ -337,5 +427,31 @@ class UKVATAgentToolSet(AgentToolSet):
                 "name": "analyze_business_data",
                 "description": "Analyze raw business invoice data and calculate UK VAT Return 9-box values with regulatory compliance notes.",
                 "input_schema": {"company_data_json": str},
+            },
+            {
+                "name": "ingest_erp_data",
+                "description": "Load demo case (source='demo', case_id='...') or parse CSV (source='csv', csv_base64='...'). Returns ImportResult for the Agent to use in subsequent calculations.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string", "enum": ["demo", "csv"]},
+                        "case_id": {"type": "string", "description": "demo case ID, e.g. 'techflow_q1_2026'"},
+                        "csv_base64": {"type": "string", "description": "base64-encoded CSV bytes"},
+                        "profile": {"type": "string", "description": "force CSV profile, e.g. 'generic'"},
+                    },
+                    "required": ["source"],
+                },
+            },
+            {
+                "name": "filter_invoices",
+                "description": "Filter/list invoices from current session's ImportResult. v0 stub — InvoiceMultiSelectPanel uses direct API.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "txn_type": {"type": "string", "enum": ["sale", "purchase"]},
+                        "flagged_only": {"type": "boolean"},
+                        "invoice_ids": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
             },
         ]
