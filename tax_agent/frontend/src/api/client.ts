@@ -4,9 +4,14 @@ import type {
   CalculationResult,
   ValidationResult,
   VATObligation,
+  ImportResult, ReconciliationDelta, DemoCaseSummary,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8765';
+// Default to a same-origin empty string so the request hits Vite's dev-server
+// proxy (which forwards /api → http://127.0.0.1:8765) and the static preview
+// server's same-origin /api path. Override with VITE_API_BASE_URL when the
+// frontend and backend are on different hosts (e.g. direct cloudfront → ALB).
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -110,5 +115,22 @@ export const api = {
       fetchApi<{ authenticated: boolean; expires_at?: number }>(
         `/api/channel/${country}/${taxType}/auth-status`
       ),
+  },
+  erp: {
+    listCases: () =>
+      fetchApi<{ cases: string[] }>('/api/erp/cases'),
+    getCase: (caseId: string) =>
+      fetchApi<ImportResult>(`/api/erp/cases/${encodeURIComponent(caseId)}`),
+    importCsv: (file: File, profile?: string) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (profile) form.append('profile', profile);
+      return fetchApi<ImportResult>('/api/erp/import', { method: 'POST', body: form });
+    },
+    reconcile: (importResult: ImportResult, erpSource: string) =>
+      fetchApi<ReconciliationDelta>('/api/erp/reconcile', {
+        method: 'POST',
+        body: JSON.stringify({ import_result: importResult, erp_source: erpSource }),
+      }),
   },
 };

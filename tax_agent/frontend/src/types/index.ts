@@ -126,3 +126,77 @@ export interface VATObligation {
   period_key: string;
   received: string | null;
 }
+
+// ERP integration types (v0)
+export interface SalesTransaction {
+  id: string;
+  txn_date: string;
+  counterparty: string;
+  net_amount: string;
+  vat_amount: string;
+  gross_amount: string;
+  vat_rate: string;
+  tax_code: string;
+  is_eu?: boolean;
+  is_reverse_charge?: boolean;
+}
+
+export interface PurchaseTransaction {
+  id: string;
+  txn_date: string;
+  counterparty: string;
+  net_amount: string;
+  vat_amount: string;
+  gross_amount: string;
+  vat_rate: string;
+  tax_code: string;
+  is_recoverable?: boolean;
+  is_eu_acquisition?: boolean;
+}
+
+export interface ERPNineBox {
+  box1_vat_due_sales: string;
+  box2_vat_due_acquisitions: string;
+  box3_total_vat_due: string;
+  box4_vat_reclaimed: string;
+  box5_net_vat_due: string;
+  box6_total_sales_ex_vat: number;
+  box7_total_purchases_ex_vat: number;
+  box8_total_goods_supplied_eu: number;
+  box9_total_goods_acquired_eu: number;
+  scheme_flags?: string[];
+}
+
+export interface ImportResult {
+  sales: SalesTransaction[];
+  purchases: PurchaseTransaction[];
+  erp_provided_boxes: ERPNineBox;
+  source_profile: string;
+  source_filename: string;
+  source_hash: string;
+  warnings?: string[];
+  rejected_rows?: Array<{ row_index: number; reason: string; raw: Record<string, string> }>;
+}
+
+export interface ReconciliationDelta {
+  box_diffs: Record<string, string>;
+  total_abs_diff: string;
+  within_tolerance: boolean;
+  erp_source: string;
+  notes: string[];
+}
+
+export interface DemoCaseSummary {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface ImportSummary {
+  source?: string;
+  compute_mode: string;
+  sales_count: number;
+  purchases_count: number;
+  import_warnings: string[];
+  import_rejected_rows_count: number;
+}
