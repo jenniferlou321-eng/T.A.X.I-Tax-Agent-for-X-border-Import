@@ -4,7 +4,7 @@ import type {
   CalculationResult,
   ValidationResult,
   VATObligation,
-  ImportResult, ReconciliationDelta, DemoCaseSummary,
+  ImportResult, ReconciliationDelta,
 } from '../types';
 
 // Default to a same-origin empty string so the request hits Vite's dev-server
@@ -14,9 +14,14 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+  const isFormData = options?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
+    headers: {
+      // Let the browser set multipart Content-Type (with boundary) for FormData.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...options?.headers,
+    },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

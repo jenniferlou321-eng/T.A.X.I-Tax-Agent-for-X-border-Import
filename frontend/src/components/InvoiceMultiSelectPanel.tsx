@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import type { SalesTransaction, PurchaseTransaction } from '../types';
 
@@ -29,12 +29,17 @@ export default function InvoiceMultiSelectPanel({
     }
   };
 
-  const totalNet = invoices
-    .filter((i) => selected.has(i.id))
-    .reduce((sum, i) => sum + Number(i.net_amount), 0);
-  const totalVat = invoices
-    .filter((i) => selected.has(i.id))
-    .reduce((sum, i) => sum + Number(i.vat_amount), 0);
+  const { totalNet, totalVat } = useMemo(() => {
+    let net = 0;
+    let vat = 0;
+    for (const i of invoices) {
+      if (selected.has(i.id)) {
+        net += Number(i.net_amount);
+        vat += Number(i.vat_amount);
+      }
+    }
+    return { totalNet: net, totalVat: vat };
+  }, [invoices, selected]);
 
   return (
     <div className="my-2 border border-fg-dim/30 rounded-lg overflow-hidden bg-bg-elevated">

@@ -20,7 +20,6 @@ import {
 } from '@heroicons/react/24/outline'
 import QuickActionButton from '../components/QuickActionButton'
 import InvoiceMultiSelectPanel from '../components/InvoiceMultiSelectPanel'
-import ErrorTableCard from '../components/ErrorTableCard'
 import NineBoxDiffTable from '../components/NineBoxDiffTable'
 import { useDemoStore } from '../stores/demoStore'
 import { casePresets } from '../data/casePresets'
