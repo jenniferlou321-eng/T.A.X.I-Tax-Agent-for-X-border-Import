@@ -5,9 +5,9 @@
 > **多国税务，一键叫车** — Your AI Copilot for Cross-Border Tax Filing, on Autopilot.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
-[![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python%203.10-blue)](tax_agent/)
-[![Frontend: React 19](https://img.shields.io/badge/Frontend-React%2019%20%2B%20TypeScript-blue)](tax_agent/frontend/)
-[![Agent: claude-agent-sdk](https://img.shields.io/badge/LLM-claude--agent--sdk-orange)](tax_agent/agent/)
+[![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python%203.10-blue)](backend/)
+[![Frontend: React 19](https://img.shields.io/badge/Frontend-React%2019%20%2B%20TypeScript-blue)](frontend/)
+[![Agent: claude-agent-sdk](https://img.shields.io/badge/LLM-claude--agent--sdk-orange)](backend/agent/)
 
 ---
 
@@ -53,39 +53,74 @@
 
 ---
 
-## 🏗️ 仓库结构
+## 🏗️ 三层插件架构
 
 ```
-T.A.X.I. 仓库根
+┌──────────────────────────────┐
+│  Frontend  (React 19 + Vite) │   ← 聊天 / 表单 / 详情
+└──────────────┬───────────────┘
+               │
+┌──────────────▼───────────────┐
+│  FastAPI Backend (backend/)  │
+│                              │
+│  Agent  →  Skills (MCP)      │   ← LLM 调工具
+│  Orchestrator (6 stages)     │   ← PRECHECK → TRACK
+│  Registry → Adapter → Channel│   ← 多国插件
+└──────────────┬───────────────┘
+               │
+       ┌───────▼───────┐
+       │ HMRC MTD API  │   ← 当前唯一已对接
+       └───────────────┘
+```
+
+> **新增一个国家** = 实现一个 `JurisdictionAdapter` + `AgentToolSet` 子类 + 注册。**无需修改 LLM 或管线**。
+
+---
+
+## 📁 仓库结构
+
+```
+/root/TAXI/                    ← 仓库根 = 项目根
 │
 ├── README.md                  ← 你正在读的产品概览
+├── CLAUDE.md                  ← 开发者指南（架构、模块、命令）
 ├── LICENSE                    ← MIT
-├── CLAUDE.md                  ← 开发者指南（指向 tax_agent/CLAUDE.md）
 ├── .gitignore                 ← 全面排除：构建产物 / 凭证 / 缓存
 │
-├── tax_agent/                 ← ⭐ 核心项目（后端 + 前端 + 文档）
-│   ├── README.md              ← 产品级 README（详细功能介绍）
-│   ├── CLAUDE.md              ← 项目级开发文档（架构、模块、命令）
-│   ├── agent/                 ← LLM 引擎 + MCP 工具工厂
-│   ├── server/                ← FastAPI 路由
-│   ├── jurisdictions/         ← 各国适配器
-│   ├── channels/              ← 提交渠道（OAuth + API）
-│   ├── services/              ← 状态机 + 审计日志
+├── pyproject.toml / setup.py / setup.cfg
+├── run_backend.py             ← 启动 wrapper（target: backend.main:app）
+├── start_backend.sh           ← 后端启动脚本
+├── vat_return_payload.json    ← 示例申报 payload
+│
+├── backend/                   ← ⭐ 全部后端 Python 代码
+│   ├── main.py                ← FastAPI 入口
 │   ├── orchestrator.py        ← 6 阶段管线
-│   ├── frontend/              ← React 19 + Vite
-│   ├── docs/                  ← 架构 + 各国流程文档
-│   ├── data/                  ← 示例企业数据（脱敏）
-│   ├── tests/  scripts/  models/
-│   ├── start_backend.sh       ← 后端启动脚本
-│   ├── run_backend.py         ← 启动 wrapper
-│   └── vat_return_payload.json← 示例申报 payload
+│   ├── registry.py / config.py
+│   ├── agent/                 ← LLM 引擎 + 工具注册 + 业务分析器
+│   │   ├── engine.py          # TaxAgentEngine（SDK + Mock 双模式）
+│   │   ├── tools.py           # MCP Server 工厂
+│   │   ├── prompts.py         # 按 jurisdiction 加载法规知识
+│   │   ├── business_analyzer.py# 原始企业发票 → 9-Box
+│   │   └── session_store.py   # SDK 会话历史读取
+│   ├── routers/               ← jurisdictions / filings / channel / users / agent
+│   ├── erp_router.py          ← ERP /erp 路由
+│   ├── jurisdictions/         ← 各国适配器 (uk/vat ...)
+│   ├── channels/              ← 提交渠道（OAuth + API）
+│   ├── erp/                   ← CSV 解析 / 对账 / 样本加载
+│   ├── services/              ← 状态机 + 审计日志
+│   └── models/                ← Pydantic 数据模型
+│
+├── frontend/                  ← React 19 + Vite
+├── data/                      ← 示例企业数据（脱敏）· erp_samples/
+├── docs/                      ← 架构 + 各国流程文档
+├── scripts/  tests/
 │
 └── design-system/             ← 设计系统 spec（颜色、字体、间距）
     └── taxagent-global/
         └── MASTER.md
 ```
 
-> 完整技术细节、模块说明、命令清单 → 见 **[`tax_agent/CLAUDE.md`](tax_agent/CLAUDE.md)**
+> 完整技术细节、模块说明、命令清单 → 见 **[`CLAUDE.md`](CLAUDE.md)**
 
 ---
 
@@ -96,14 +131,13 @@ T.A.X.I. 仓库根
 git clone https://github.com/GTC2333/T.A.X.I-Tax-Agent-for-X-border-Import.git
 cd T.A.X.I-Tax-Agent-for-X-border-Import
 
-# 2. 后端（conda 环境 taxagent，Python ≥ 3.10）
-cd tax_agent
+# 2. 后端（conda 环境 taxagent，Python ≥ 3.10）— 从仓库根运行
 pip install -e ".[server,dev]"
 ./start_backend.sh        # 端口 8765
 # 或:  python run_backend.py
 
 # 3. 前端（新终端）
-cd tax_agent/frontend
+cd frontend
 npm install
 npm run dev               # 端口 5173
 
@@ -128,7 +162,22 @@ PRECHECK  →  PREPARE  →  CALCULATE  →  VALIDATE  →  SUBMIT  →  TRACK
    FilingResult 状态机：PENDING → IN_PROGRESS → SUBMITTED → ACCEPTED/REJECTED
 ```
 
-详细：[`tax_agent/docs/architecture/pipeline.md`](tax_agent/docs/architecture/pipeline.md)
+详细：[`docs/architecture/pipeline.md`](docs/architecture/pipeline.md)
+
+---
+
+## 📚 文档索引
+
+| 主题 | 链接 |
+|---|---|
+| 系统架构总览 | [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| 6 阶段管线详解 | [`docs/architecture/pipeline.md`](docs/architecture/pipeline.md) |
+| 扩展新国家指南 | [`docs/architecture/adding-new-jurisdiction.md`](docs/architecture/adding-new-jurisdiction.md) |
+| UK VAT 报税流程 | [`docs/jurisdictions/uk/vat-workflow.md`](docs/jurisdictions/uk/vat-workflow.md) |
+| UK VAT 9-Box 规则 | [`docs/jurisdictions/uk/vat-rules.md`](docs/jurisdictions/uk/vat-rules.md) |
+| HMRC OAuth 2.0 | [`docs/jurisdictions/uk/oauth.md`](docs/jurisdictions/uk/oauth.md) |
+| HMRC 沙盒测试 | [`docs/jurisdictions/uk/sandbox-testing.md`](docs/jurisdictions/uk/sandbox-testing.md) |
+| 前端 9000 端口部署 | [`docs/deployment/port-9000.md`](docs/deployment/port-9000.md) |
 
 ---
 

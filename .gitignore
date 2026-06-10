@@ -82,6 +82,7 @@ lerna-debug.log*
 .env.*
 .env.local
 .env.*.local
+.env.testuser
 !.env.example
 .tokens/
 *.pem

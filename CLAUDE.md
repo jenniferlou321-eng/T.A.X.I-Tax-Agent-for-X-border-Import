@@ -1,41 +1,68 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
 # T.A.X.I. — Tax Agent for X-border & Import
 
 > **多国税务，一键叫车** — Your AI Copilot for Cross-Border Tax Filing, on Autopilot.
 
-This file is the **repo-level** developer guide. For the product pitch, see [`README.md`](./README.md). For **technical details** (architecture, modules, commands, all country adapters), see **[`tax_agent/CLAUDE.md`](./tax_agent/CLAUDE.md)**.
+This is the **single** developer guide for the repo. For the product pitch, see [`README.md`](./README.md). All backend Python code lives in the `backend/` package at the repo root; resources (`data/`, `docs/`, `scripts/`, `tests/`, `frontend/`) sit at the root.
+
+---
+
+## What This Project Is
+
+**T.A.X.I.** is a multi-country automated tax filing platform. It couples:
+- A **chat-style AI agent** (using `claude-agent-sdk`) that can trigger filing workflows via natural language
+- A **deterministic 6-stage pipeline** (`backend/orchestrator.py`) that all jurisdictions share
+- A **plugin architecture** (Registry → Adapter → Channel) for adding new countries/tax types
+
+Currently live: **UK VAT** via HMRC Making Tax Digital API. UK SA / CT / PAYE / SDLT adapter slots are registered; DE / FR / CN are placeholders.
 
 ---
 
 ## Repo Layout
 
 ```
-T.A.X.I. 仓库根
+/root/TAXI/                          ← 仓库根 = 项目根
 │
-├── README.md                  ← 产品概览
-├── LICENSE                    ← MIT
-├── CLAUDE.md                  ← 你正在读的仓库级开发者指南
-├── .gitignore                 ← 全面排除
+├── README.md                        ← 产品概览
+├── CLAUDE.md                        ← 你正在读的开发者指南
+├── LICENSE                          ← MIT
+├── .gitignore
 │
-├── tax_agent/                 ← ⭐ 核心项目
-│   ├── CLAUDE.md              ← 项目级技术文档（⭐ 从这里开始）
-│   ├── README.md              ← 产品级 README
-│   ├── agent/                 ← LLM engine + MCP tools
-│   ├── server/                ← FastAPI
-│   ├── jurisdictions/         ← 各国适配器
-│   ├── channels/              ← 提交渠道
-│   ├── services/              ← 状态机 + 审计日志
-│   ├── orchestrator.py        ← 6 阶段管线
-│   ├── frontend/              ← React 19 + Vite
-│   ├── docs/                  ← 架构 + 各国流程
-│   ├── tests/  scripts/  models/  data/
-│   ├── start_backend.sh       ← 启动脚本
-│   ├── run_backend.py
-│   └── vat_return_payload.json
+├── pyproject.toml / setup.py / setup.cfg   ← 打包：packages = ["backend"]
+├── run_backend.py                   ← uvicorn launcher（target: backend.main:app）
+├── start_backend.sh                 ← 启动脚本
+├── vat_return_payload.json
 │
-└── design-system/             ← 设计系统 spec
-    └── taxagent-global/
-        └── MASTER.md
+├── backend/                         ← ⭐ 全部后端 Python 代码（唯一 import 根）
+│   ├── __init__.py                  ←   暴露 JurisdictionRegistry / Orchestrator
+│   ├── config.py
+│   ├── registry.py
+│   ├── orchestrator.py              ←   6 阶段管线
+│   ├── main.py                      ←   FastAPI app factory (was server/main.py)
+│   ├── erp_router.py                ←   /erp routes (was server/erp.py)
+│   ├── routers/                     ←   agent, channel, filings, jurisdictions, users
+│   ├── agent/                       ←   engine.py tools.py prompts.py business_analyzer.py session_store.py
+│   ├── channels/                    ←   api_channel.py oauth.py fraud_headers.py
+│   ├── erp/                         ←   csv_parser.py profiles.py reconcile.py erp_samples_loader.py ...
+│   ├── jurisdictions/               ←   uk/{vat,paye,self_assessment,corporation_tax,stamp_duty} · testland/vat
+│   ├── models/                      ←   Pydantic domain models
+│   └── services/                    ←   state_machine.py audit_log.py
+│
+├── frontend/                        ← React 19 + TS + Vite
+├── data/                            ← 样本业务数据 (anonymized) · erp_samples/
+├── docs/                            ← architecture / deployment / integration / jurisdictions
+├── scripts/                         ← 独立可执行脚本
+├── tests/                           ← pytest 套件 · erp/
+│
+└── design-system/                   ← 设计系统 spec → taxagent-global/MASTER.md
 ```
+
+> **Imports** are uniformly `from backend.X import ...`. The FastAPI app target is `backend.main:app`; the ERP router is `from backend.erp_router import router` (note: `backend.erp` is the ERP *package*, `backend.erp_router` is the FastAPI router module — kept distinct on purpose).
 
 ---
 
@@ -44,30 +71,185 @@ T.A.X.I. 仓库根
 | 你想做 | 去哪里 |
 |---|---|
 | 了解产品定位 | [`README.md`](./README.md) |
-| 跑起来 / 部署 | [`tax_agent/CLAUDE.md` → Quick Start](./tax_agent/CLAUDE.md) |
-| 加一个新国家 | [`tax_agent/docs/architecture/adding-new-jurisdiction.md`](./tax_agent/docs/architecture/adding-new-jurisdiction.md) |
-| 加一个新税种 | [`tax_agent/CLAUDE.md` → Common Tasks](./tax_agent/CLAUDE.md) |
-| 理解 6 阶段管线 | [`tax_agent/docs/architecture/pipeline.md`](./tax_agent/docs/architecture/pipeline.md) |
+| 加一个新国家 | [`docs/architecture/adding-new-jurisdiction.md`](./docs/architecture/adding-new-jurisdiction.md) |
+| 加一个新税种 | [Common Tasks](#common-tasks) |
+| 理解 6 阶段管线 | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
 | 改 UI 设计 | [`design-system/taxagent-global/MASTER.md`](./design-system/taxagent-global/MASTER.md) |
-| 改 Agent 工具 | [`tax_agent/CLAUDE.md` → Agent Layer](./tax_agent/CLAUDE.md) |
+| 改 Agent 工具 | [Agent Layer](#agent-layer) |
+| **前端部署到 9000 端口 + 公网可访问** | [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md) |
 
 ---
 
 ## Quick Commands
 
 ```bash
-# 后端
-cd tax_agent && ./start_backend.sh
+# 后端 (FastAPI, port 8765) — 从仓库根运行
+./start_backend.sh                       # path-agnostic — works on macOS dev and Linux servers
+# Or, if start_backend.sh's `python -c "import backend"` smoke check fails:
+python run_backend.py                    # ensures repo root is on sys.path
 
-# 前端
-cd tax_agent/frontend && npm run dev
+# 前端 (built dist/ served on port 9000, with SPA fallback to /index.html)
+./scripts/serve_frontend_9000.sh
+# In dev (HMR, proxy to backend):
+cd frontend && npm run dev               # 9000 too (vite.config.ts has the proxy)
 
-# 测试
-cd tax_agent && pytest
+# 测试 — 从仓库根运行
+pytest                                   # 跑全部
+pytest tests/path/to/test_file.py -k test_name   # 跑单个测试 / 按关键字
 
 # Lint
-cd tax_agent && ruff check .
+ruff check .
 ```
+
+API 文档：<http://localhost:8765/docs>
+前端入口：<http://localhost:9000>
+完整部署指南：[`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md)
+
+---
+
+## 3-Layer Plugin Architecture
+
+The whole backend follows **Registry → Adapter → Channel**. New countries plug in without touching the LLM or pipeline.
+
+### Layer 1 — Registry (`backend/registry.py`)
+`JurisdictionRegistry` holds all `JurisdictionAdapter` instances keyed by `country_code`. New countries are registered in `backend/main.py`:
+```python
+registry = JurisdictionRegistry()
+registry.register(UKJurisdictionAdapter())
+```
+
+### Layer 2 — Adapter (`backend/jurisdictions/{cc}/__init__.py`)
+Abstract base class `JurisdictionAdapter` defines per-country contract:
+- `get_template(tax_type)` → `DataTemplate` (form schema)
+- `calculate(tax_type, data)` → `CalculationResult`
+- `validate(tax_type, data)` → `ValidationReport`
+- `get_channel(tax_type)` → `FilingChannel`
+- `to_filing_format(tax_type, data)` → `FilingPayload`
+- `get_agent_tools(tax_type)` → `AgentToolSet | None` (for LLM skill registration)
+
+UK implementation delegates per-tax-type to `backend/jurisdictions/uk/vat/` etc.
+
+### Layer 3 — Channel (`backend/channels/api_channel.py`)
+Abstract `FilingChannel` defines: `authenticate()`, `submit(payload)`, `get_status(receipt)`, `health_check()`.
+- `APIChannel` is the REST implementation (HMRC).
+- Future: `BrowserChannel` for China's 电子税务局 (Playwright).
+
+---
+
+## The 6-Stage Orchestrator (`backend/orchestrator.py`)
+
+Shared pipeline for every jurisdiction:
+
+```
+PRECHECK  →  PREPARE  →  CALCULATE  →  VALIDATE  →  SUBMIT  →  TRACK
+   │            │            │             │            │          │
+template    auth + format  adapter.calc   adapter.val  channel.  channel.
+validation   conversion                   (warn_policy  submit    get_status
+                                                          controls)  (poll)
+```
+
+Each stage:
+1. Records to `AuditLog` (per `filing_id`)
+2. Updates `FilingResult.stage_results[stage]`
+3. Transitions `FilingStatus` via `StateMachine` (illegal transitions raise)
+
+`StateMachine` (`backend/services/state_machine.py`):
+```
+PENDING → IN_PROGRESS → SUBMITTED → ACCEPTED  (terminal)
+                  │           │
+                  │           └──→ REJECTED → PENDING (resubmit after fix)
+                  └──→ ERROR ──┴──→ SUBMITTED / PENDING
+```
+
+---
+
+## Agent Layer
+
+### Engine (`backend/agent/engine.py`)
+`TaxAgentEngine` exposes `async chat(session_id, message, ...) -> AsyncIterator[str]`.
+- **SDK mode**: `ANTHROPIC_API_KEY` set + `claude-agent-sdk` installed → uses `ClaudeSDKClient`
+- **Mock mode**: keyword matching fallback for demos (no API key needed)
+
+`AgentSession` is per-conversation state (jurisdiction, taxpayer_id, period_key, line_items, messages, cached SDK clients).
+
+### Skills Factory (`backend/agent/tools.py`)
+`create_mcp_servers(registry)` walks the registry, builds one MCP server per `(country, tax_type)` pair, each hosting that jurisdiction's `AgentToolSet` methods.
+- Tool names use MCP namespace: `mcp__tax_agent_uk_vat__get_vat_obligations` (the `tax_agent_*` prefix is the MCP server-name scheme, unrelated to the package path).
+- Defensive: tools that fail to resolve (e.g., SA metadata/method mismatch) are skipped, not fatal
+
+### UK VAT Skills (`backend/jurisdictions/uk/vat/agent_tools.py`)
+Six tools wrapping HMRC MTD for VAT:
+| Tool | Wraps |
+|---|---|
+| `get_vat_obligations` | HMRC `GET /organisations/vat/{vrn}/obligations` |
+| `calculate_vat_return` | local 9-Box calculator |
+| `validate_vat_return` | local compliance validator |
+| `submit_vat_return` | HMRC `POST /organisations/vat/{vrn}/returns` |
+| `get_vat_return` | HMRC `GET .../returns/{periodKey}` |
+| `analyze_business_data` | `backend/agent/business_analyzer.py` |
+
+LLM-facing field names (`vrn`, `period_key`, etc.) are mapped to the internal `taxpayer_id` automatically.
+
+### Agent Router (`backend/routers/agent.py`)
+- WebSocket `/api/agent/ws/chat` (primary, used by frontend)
+- SSE `/api/agent/chat` (HTTP fallback)
+- Session listing: `/api/agent/sessions` (reads SDK's JSONL files)
+- Health: `/api/agent/health`
+
+---
+
+## Models
+
+All domain models are Pydantic in `backend/models/`:
+- `tax_data.py` — `TaxData`, `TaxType`, `FiscalPeriod`, `LineItem`, `ChannelType`
+- `template.py` — `DataTemplate`, `TemplateSection`, `TemplateField`
+- `results.py` — `FilingResult`, `FilingStatus`, `StageResult`, `CalculationResult`, `ValidationReport`, `Receipt`
+- `agent_tools.py` — abstract `AgentToolSet` base class
+
+Import from `backend.models`.
+
+---
+
+## Common Tasks
+
+| Task | File |
+|---|---|
+| Add a new country | New `backend/jurisdictions/{cc}/__init__.py` adapter + `register()` in `backend/main.py` |
+| Add a new tax type | Add to `TaxType` enum + implement per-type adapter under `backend/jurisdictions/{cc}/{tax_type}/` |
+| Change pipeline retry/timeout | `backend/config.py` (`FilingConfig`) |
+| Change HMRC base URL | `backend/jurisdictions/uk/config.py` (`hmrc_config`) |
+| Add an agent tool | Add async method to `AgentToolSet` subclass + entry in `get_tool_metadata()` |
+| Add a frontend page | Route in `frontend/src/App.tsx` + page in `frontend/src/pages/` |
+| Read HMRC OAuth helper | `scripts/` (manual OAuth flow) |
+| **Deploy frontend on port 9000 with public access** | [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md) — covers Vite proxy config, the `serve_frontend_9000.sh` static server, and Cloudflare Tunnel / nginx recipes. |
+| **Add CSV profile** | `backend/erp/profiles.py` (新 class + 注册到 `_PROFILES`) |
+| **Add demo case** | 写 JSON 到 `data/erp_samples/<id>.json` |
+
+---
+
+## Copilot Philosophy
+
+AI 是副驾，**最终决定权在人**——报税必须由人确认提交，AI 不替你在法律意义上"按下按钮"。这条原则在设计 agent 工具、UI 流程、agent 提示词时都要尊重。
+
+---
+
+## Cross-Border Nature
+
+T.A.X.I. 从第一天起就为**跨境场景**设计，要解决 3 件最难的事：
+1. **不同国家不同的表单**（UK 9-Box vs DE Umsatzsteuer vs CN 增值税）
+2. **不同的认证流程**（UK OAuth vs 未来 DE/FR/CN）
+3. **不同的提交渠道**（API vs 浏览器自动化）
+
+**3 层插件架构**（Registry → Adapter → Channel）保证：加一个新国家只需几百行代码，不用重写管线或 LLM。
+
+---
+
+## Environment & Secrets
+
+- Backend secrets live in `.env` and `.env.testuser` at the repo root — **never commit** (gitignored)
+- HMRC OAuth tokens cached per-VRN in `./.tokens/{vrn}.json` — also gitignored
+- Frontend has no `.env`; API base URL defaults to a same-origin `/api` base (overridable via `VITE_API_BASE_URL`)
+- CORS in `backend/main.py` allows `localhost:5173/5174/9000` + `CORS_ORIGINS` env var
 
 ---
 
@@ -79,20 +261,28 @@ To keep the public repo clean, the following have been **excluded from version c
 |---|---|
 | `tax_auto/` (legacy Playwright) | Superseded by API channel; contained `cookies.json` and 14MB browser profile |
 | `data/oauth_token.json` | HMRC OAuth token — credential leak risk |
-| `frontend/` and `src/` (repo root) | Empty Vite/React shells, never used (real frontend lives in `tax_agent/frontend/`) |
 | `claude_docs/`, `claude_docs_searcher/` | Copies of `claude-agent-sdk` reference docs (146 files, 4.1 MB) — should come from the SDK itself |
 | `logs/`, `.claude/` | Runtime artifacts and local Claude Code config |
-| All `node_modules/`, `__pycache__/`, `.pytest_cache/`, `tax_agent.egg-info/` | Build/dependency artifacts |
+| All `node_modules/`, `__pycache__/`, `.pytest_cache/`, `*.egg-info/` | Build/dependency artifacts |
 
-**Sensitive content is also `.gitignore`d** (in case it's recreated): `.env`, `.env.*`, `tax_agent/.tokens/`, `*.pem`, `*.key`, `secrets/`.
+**Sensitive content is also `.gitignore`d** (in case it's recreated): `.env`, `.env.*`, `.tokens/`, `*.pem`, `*.key`, `secrets/`.
 
 ---
 
 ## Notes
 
-- **Two README files exist by design**: root `README.md` (product pitch) and `tax_agent/README.md` (TAXI's product doc inside the core project). Same for `CLAUDE.md`.
-- **Cross-border nature**: T.A.X.I. was designed from day one to handle the **3 hardest things** in cross-border tax:
-  1. **Different forms per country** (UK 9-Box vs DE Umsatzsteuer vs CN 增值税)
-  2. **Different auth flows** (UK OAuth vs future DE/FR/CN)
-  3. **Different submission channels** (API vs Browser automation)
-  The 3-layer plugin architecture (Registry → Adapter → Channel) keeps adding a new country to **a few hundred lines of code, not a rewrite**.
+- Tests in `tests/` are minimal. Run `pytest` from the repo root; the `pytest-httpx` dev dep is wired in for HMRC HTTP mocking.
+- When `uvicorn --reload` fails to import the package after a restructure, fall back to `python run_backend.py` (it ensures the repo root is on `sys.path`).
+- **Frontend port is 9000** (Vite dev server, the static `serve_frontend_9000.sh`, and `vite preview` all use it). The frontend defaults to a **same-origin `/api` base**, so the public-internet tunnel/proxy in front of the static server is responsible for forwarding `/api`, `/docs`, `/openapi.json`, `/health` → port 8765. See [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md).
+
+## Current deployment topology (2026-06)
+
+This dev host runs both servers in the background:
+
+| Port | Process | Started by |
+|---|---|---|
+| `:8765` | `uvicorn` (FastAPI) — `/opt/python-musl/python/bin/python3.11 run_backend.py` (target `backend.main:app`) | `nohup` in this session |
+| `:9000` | `python3 scripts/serve_frontend_9000.py` (Python 3.6 stdlib, SPA fallback) | `nohup bash scripts/serve_frontend_9000.sh` |
+
+- The musl standalone Python at `/opt/python-musl/python/bin/python3.11` was used because the system Python is 3.6.8 (the repo requires `>=3.9`). Server deps were installed with `--only-binary :all:`; `playwright` (only used in `scripts/hmrc_oauth_*.py`, not by the server) was skipped because it has no musl wheels.
+- The frontend `dist/` was built with Vite **4.5.5** (Vite 5+ requires Node 18+, Node 16 is what's on this box). Tailwind v4 was stripped from the build because the `@tailwindcss/vite` plugin needs Node 20+; the app is fully functional (routes, API calls, WebSocket chat) but unstyled in this dev build. To get a styled build, run `npm install && npm run build` (in `frontend/`) on a host with Node 20+ — the `package.json` is pinned to original-version deps.
