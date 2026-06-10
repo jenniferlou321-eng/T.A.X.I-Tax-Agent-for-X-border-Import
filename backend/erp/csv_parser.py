@@ -4,13 +4,13 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
-from decimal import Decimal
 from typing import List, Tuple
 
 from ..models.erp_models import (
-    ERPNineBox, ImportResult, SalesTransaction, PurchaseTransaction,
+    ImportResult, SalesTransaction, PurchaseTransaction,
 )
 from .profiles import GenericProfile, REQUIRED_COLUMNS
+from .reconcile import compute_taxi_nine_box
 
 
 class CsvParseError(ValueError):
@@ -82,8 +82,8 @@ def parse_csv(file_bytes: bytes, profile: str | None = None) -> ImportResult:
         elif isinstance(txn, PurchaseTransaction):
             purchases.append(txn)
 
-    # 6. 算 9-Box（v0 简化：从交易数据汇总，不调 reconcile.py）
-    nine_box = _compute_9box_from_transactions(sales, purchases)
+    # 6. 算 9-Box（T.A.X.I. 权威算法，与 reconcile 共用同一实现）
+    nine_box = compute_taxi_nine_box(sales, purchases)
 
     # 7. source hash
     source_hash = hashlib.sha256(file_bytes).hexdigest()[:16]
@@ -97,30 +97,4 @@ def parse_csv(file_bytes: bytes, profile: str | None = None) -> ImportResult:
         source_hash=source_hash,
         warnings=warnings,
         rejected_rows=rejected,
-    )
-
-
-def _compute_9box_from_transactions(
-    sales: List[SalesTransaction], purchases: List[PurchaseTransaction],
-) -> ERPNineBox:
-    """v0 简化版 9-Box 计算（不调 reconcile.py，避免循环 import）。"""
-    box1 = sum((t.vat_amount for t in sales if t.vat_rate > 0), Decimal("0"))
-    box2 = sum((t.vat_amount for t in purchases if t.is_eu_acquisition), Decimal("0"))
-    box3 = box1 + box2
-    box4 = sum((t.vat_amount for t in purchases if t.is_recoverable), Decimal("0"))
-    box5 = abs(box3 - box4)
-    box6 = int(sum((t.net_amount for t in sales), Decimal("0")))
-    box7 = int(sum((t.net_amount for t in purchases), Decimal("0")))
-    box8 = int(sum((t.net_amount for t in sales if t.is_eu), Decimal("0")))
-    box9 = int(sum((t.net_amount for t in purchases if t.is_eu_acquisition), Decimal("0")))
-    return ERPNineBox(
-        box1_vat_due_sales=box1,
-        box2_vat_due_acquisitions=box2,
-        box3_total_vat_due=box3,
-        box4_vat_reclaimed=box4,
-        box5_net_vat_due=box5,
-        box6_total_sales_ex_vat=box6,
-        box7_total_purchases_ex_vat=box7,
-        box8_total_goods_supplied_eu=box8,
-        box9_total_goods_acquired_eu=box9,
     )
