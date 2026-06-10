@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(channel.router, prefix="/api")
     app.include_router(users.router, prefix="/api")
     app.include_router(agent_router.router, prefix="/api")
-    app.include_router(erp_router)  # 新加这一行 (router 自带 prefix="/erp")
+    app.include_router(erp_router, prefix="/api")  # router 自带 prefix="/erp" → /api/erp/*
 
     @app.get("/health")
     async def health_check():
