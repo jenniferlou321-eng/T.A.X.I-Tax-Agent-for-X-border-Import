@@ -45,6 +45,12 @@ class SPAStaticHandler(http.server.SimpleHTTPRequestHandler):
         # class attribute inside translate_path (that branch was added in
         # 3.7). Reimplement the safe-join here so the served root is the
         # dist directory and not CWD.
+        #
+        # NB: we read `self.serve_dir`, NOT `self.directory`. On Python 3.7+
+        # the base __init__ sets `self.directory = os.getcwd()` as an instance
+        # attribute, which shadows any class attribute — so a class-level
+        # `directory` is silently overwritten with CWD. `serve_dir` is ours
+        # alone and survives on every version.
         # Drop the query string and percent-decode (the parent's first steps).
         import posixpath
         import urllib.parse
@@ -52,7 +58,7 @@ class SPAStaticHandler(http.server.SimpleHTTPRequestHandler):
         path = path.split("#", 1)[0]
         path = posixpath.normpath(urllib.parse.unquote(path))
         words = [w for w in path.split("/") if w]
-        root = os.path.abspath(self.directory)
+        root = os.path.abspath(self.serve_dir)
         full = root
         for w in words:
             if os.path.dirname(w) or w in (os.curdir, os.pardir):
@@ -75,7 +81,7 @@ class SPAStaticHandler(http.server.SimpleHTTPRequestHandler):
 
     def _send_index(self):
         try:
-            with open(os.path.join(self.directory, "index.html"), "rb") as f:
+            with open(os.path.join(self.serve_dir, "index.html"), "rb") as f:
                 body = f.read()
         except (OSError, AttributeError):
             self.send_error(500, "index.html not found -- did you run `npm run build`?")
@@ -98,14 +104,17 @@ class SPAStaticHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def make_handler(directory):
-    """Return a handler class bound to `directory` (Python 3.6 compatible)."""
-    # Setting `directory` as a class attribute is the pre-3.7 idiom; the
-    # 3.7+ path of `SimpleHTTPRequestHandler(..., directory=...)` does the
-    # same internally.
+    """Return a handler class bound to `directory` (Python 3.6 compatible).
+
+    We bind the path to a custom `serve_dir` attribute rather than the
+    stdlib's `directory`: on Python 3.7+ the base __init__ overwrites
+    `self.directory` with os.getcwd(), so a class-level `directory` would
+    be ignored. `serve_dir` is read by our translate_path/_send_index.
+    """
     return type(
         "SPAStaticHandler_%s" % abs(hash(directory)),
         (SPAStaticHandler,),
-        {"directory": directory},
+        {"serve_dir": directory},
     )
 
 
