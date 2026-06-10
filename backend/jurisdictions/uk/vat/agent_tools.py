@@ -254,15 +254,7 @@ class UKVATAgentToolSet(AgentToolSet):
         except Exception as e:
             return _tool_error(f"unexpected error: {e}")
 
-        # Serialize with v1/v2 compat
-        if hasattr(ir, "model_dump"):
-            ir_dict = ir.model_dump(mode="json")
-        else:
-            ir_dict = ir.dict()
-            # pydantic v1: convert Decimal/date to strings
-            from datetime import date
-            from decimal import Decimal
-            ir_dict = json.loads(json.dumps(ir_dict, default=str))
+        ir_dict = ir.model_dump(mode="json")
 
         return _tool_ok({
             "success": True,

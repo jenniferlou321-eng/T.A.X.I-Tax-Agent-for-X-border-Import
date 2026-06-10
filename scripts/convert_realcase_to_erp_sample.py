@@ -158,11 +158,7 @@ def main():
     from backend.erp.reconcile import compute_taxi_nine_box
     nine_box = compute_taxi_nine_box(sales, purchases)
     # 故意埋 1 个小差异（demo wow 效果）：ERP 报的 box1 +3.50
-    # pydantic v1/v2 compat: v1 用 copy(deep=True), v2 用 model_copy(deep=True)
-    if hasattr(nine_box, "model_copy"):
-        erp_box = nine_box.model_copy(deep=True)
-    else:
-        erp_box = nine_box.copy(deep=True)
+    erp_box = nine_box.model_copy(deep=True)
     erp_box.box1_vat_due_sales = erp_box.box1_vat_due_sales + Decimal("3.50")
     ir = ImportResult(
         sales=sales, purchases=purchases,
@@ -172,13 +168,7 @@ def main():
         source_hash="techflow-2026-q1",
     )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    # pydantic v1/v2 compat
-    if hasattr(ir, "model_dump"):
-        ir_json = ir.model_dump(mode="json")
-    else:
-        ir_json = ir.dict()
-        import json as _json
-        ir_json = _json.loads(_json.dumps(ir_json, default=str))
+    ir_json = ir.model_dump(mode="json")
     OUTPUT.write_text(json.dumps(ir_json, indent=2), encoding="utf-8")
     print(f"Wrote {OUTPUT} ({len(sales)} sales, {len(purchases)} purchases)")
 

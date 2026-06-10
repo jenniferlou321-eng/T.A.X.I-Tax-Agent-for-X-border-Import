@@ -8,8 +8,6 @@
 """
 from __future__ import annotations
 
-import hashlib
-import io
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -24,16 +22,8 @@ router = APIRouter(prefix="/erp", tags=["erp"])
 
 
 def _to_json(model) -> dict:
-    """Serialize a pydantic model to JSON-safe dict.
-
-    Supports both pydantic v2 (model_dump) and v1 (dict). The project
-    spec targets pydantic v2 (per pyproject.toml `pydantic>=2.0`); this
-    helper is a fallback so the router can be exercised on environments
-    that still have pydantic v1 installed.
-    """
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")
-    return model.dict()
+    """Serialize a pydantic model to a JSON-safe dict."""
+    return model.model_dump(mode="json")
 
 
 @router.get("/cases")
@@ -77,10 +67,7 @@ def post_reconcile(payload: dict):
     Request body: {"import_result": {...}, "erp_source": "csv:generic"}
     """
     try:
-        if hasattr(ImportResult, "model_validate"):
-            ir = ImportResult.model_validate(payload["import_result"])
-        else:  # pydantic v1 compat
-            ir = ImportResult.parse_obj(payload["import_result"])
+        ir = ImportResult.model_validate(payload["import_result"])
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"invalid ImportResult: {e}") from e
     taxi_boxes = compute_taxi_nine_box(ir.sales, ir.purchases)

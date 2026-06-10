@@ -452,20 +452,10 @@ class Orchestrator:
             self.audit.record(filing_id, "IMPORT", ERP_IMPORT_FAILED, {"error": str(e), "source": source})
             return None
 
-        # 写入 TaxData.metadata (Pydantic v1/v2 compat shim)
-        data.metadata["erp_provided_boxes"] = (
-            ir.erp_provided_boxes.model_dump(mode="json")
-            if hasattr(ir.erp_provided_boxes, "model_dump")
-            else ir.erp_provided_boxes.dict()
-        )
-        data.metadata["sales_transactions"] = [
-            s.model_dump(mode="json") if hasattr(s, "model_dump") else s.dict()
-            for s in ir.sales
-        ]
-        data.metadata["purchase_transactions"] = [
-            p.model_dump(mode="json") if hasattr(p, "model_dump") else p.dict()
-            for p in ir.purchases
-        ]
+        # 写入 TaxData.metadata
+        data.metadata["erp_provided_boxes"] = ir.erp_provided_boxes.model_dump(mode="json")
+        data.metadata["sales_transactions"] = [s.model_dump(mode="json") for s in ir.sales]
+        data.metadata["purchase_transactions"] = [p.model_dump(mode="json") for p in ir.purchases]
         data.metadata["source"] = ir.source_profile
         data.metadata["compute_mode"] = data.metadata.get("compute_mode", "reconcile")
         data.metadata["import_warnings"] = ir.warnings
