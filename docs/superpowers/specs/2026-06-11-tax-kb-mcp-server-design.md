@@ -45,9 +45,9 @@ This spec designs a new MCP server (`tax_agent_global_tax_kb`) plus a dedicated 
 │ Main Agent (ClaudeSDKClient)                                       │
 │                                                                    │
 │  System prompt section:                                            │
-│  "For complex tax-law questions, call the tax_kb_researcher        │
-│   sub-agent. For simple rates/concepts, call get_tax_rates or      │
-│   explain_tax_concept directly."                                   │
+│  "For any non-trivial tax-law question, call the tax_kb_researcher │
+│   sub-agent. For simple rate lookups, call get_tax_rates directly. │
+│   The sub-agent uses search_tax_knowledge internally."             │
 │                                                                    │
 │  ├─ SDK sub-agent: tax_kb_researcher                               │
 │  │     system_prompt = TAX_KB_SUBAGENT_PROMPT                      │
@@ -56,7 +56,7 @@ This spec designs a new MCP server (`tax_agent_global_tax_kb`) plus a dedicated 
 │  │                                                                  │
 │  │   multi-turn search → filter → synthesize → return answer       │
 │  │                                                                  │
-│  └─ Direct MCP tool calls: get_tax_rates / explain_tax_concept     │
+│  └─ Direct MCP tool calls: get_tax_rates                           │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
                                 │
@@ -69,7 +69,6 @@ This spec designs a new MCP server (`tax_agent_global_tax_kb`) plus a dedicated 
 │  ├── search_tax_knowledge(jurisdiction, tax_type, query)           │
 │  │     → used by the sub-agent                                     │
 │  ├── get_tax_rates(jurisdiction, tax_type, year)                   │
-│  ├── explain_tax_concept(jurisdiction, tax_type, concept)          │
 │  └── list_supported_jurisdictions()                                │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
@@ -166,8 +165,9 @@ Extends `AgentToolSet` (same pattern as `UKVATAgentToolSet`).
 |---|---|---|---|
 | `search_tax_knowledge` | `jurisdiction`, `tax_type`, `query` | `list[dict]` with `title`, `content`, `source_path` | Sub-agent only |
 | `get_tax_rates` | `jurisdiction`, `tax_type`, `year?` | JSON rate table | Main agent |
-| `explain_tax_concept` | `jurisdiction`, `tax_type`, `concept` | Short definition + source | Main agent |
 | `list_supported_jurisdictions` | none | List of `(jurisdiction, tax_type)` | Main agent |
+
+`explain_tax_concept` is intentionally **not** exposed. Conceptual questions are handled by the `tax_kb_researcher` sub-agent using `search_tax_knowledge`.
 
 All tools return `_tool_ok(...)` / `_tool_error(...)` format consistent with existing tools.
 
@@ -212,11 +212,13 @@ Append a section to `backend/agent/prompts.py::_GENERIC_PROMPT_HEADER` (or to `_
 
 ```text
 ## Tax Law Research
-For complex tax-law questions, call the `tax_kb_researcher` sub-agent.
+For any non-trivial tax-law question, call the `tax_kb_researcher` sub-agent.
 It will search the knowledge base and return a concise answer with citations.
-For simple rate/concept lookups, call `get_tax_rates` or `explain_tax_concept`
-directly.
+For simple rate lookups, call `get_tax_rates` directly.
 ```
+
+All tax-knowledge tools are technically available to the main agent, but the
+prompt should **encourage** the sub-agent path for research.
 
 ### 6. MCP Registration
 
@@ -271,12 +273,20 @@ if kb_info:
 6. Sub-agent filters, synthesizes, returns answer with citations.
 7. Main agent presents answer to user.
 
-### Flow B: Direct Tool Call (simple query)
+### Flow B: Direct Tool Call (simple factual query)
 
 1. User asks: "What's the UK VAT standard rate for 2026?"
 2. Main agent calls `get_tax_rates("uk", "vat", "2026")`.
 3. Tool returns `{"standard": 0.20, ...}`.
 4. Main agent answers immediately.
+
+### Flow C: Conceptual Question (routed through sub-agent)
+
+1. User asks: "What is reverse charge under UK VAT?"
+2. Main agent calls `tax_kb_researcher` sub-agent with the question.
+3. Sub-agent calls `search_tax_knowledge("uk", "vat", "reverse charge")`.
+4. Sub-agent synthesizes a definition with citations.
+5. Main agent presents the answer.
 
 ---
 
@@ -301,12 +311,13 @@ if kb_info:
 
 2. **MCP tool unit tests**
    - `get_tax_rates("uk", "vat", "2026")` returns expected rate object.
-   - `explain_tax_concept("uk", "vat", "reverse charge")` returns a definition.
    - `list_supported_jurisdictions()` returns non-empty list.
+   - `search_tax_knowledge("uk", "vat", "EU B2B")` returns the `## EU B2B Sales` section.
 
 3. **Sub-agent integration tests (mocked)**
    - Mock `search_tax_knowledge` to return snippets.
-   - Verify sub-agent can be invoked and synthesizes an answer.
+   - Verify sub-agent can be invoked and synthesizes an answer for both
+     factual and conceptual questions.
 
 4. **End-to-end test**
    - Start backend.
