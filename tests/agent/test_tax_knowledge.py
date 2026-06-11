@@ -1,5 +1,10 @@
 """Tests for the tax knowledge MCP server."""
+import json
+
+import pytest
+
 from backend.agent.tax_knowledge_store import TaxKnowledgeStore, KnowledgeSection
+from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
 
 
 class TestTaxKnowledgeStore:
@@ -73,3 +78,41 @@ class TestTaxKnowledgeStore:
         (tmp_path / "de" / "vat.md").write_text("## A\n", encoding="utf-8")
         store = TaxKnowledgeStore(base_path=str(tmp_path))
         assert store.list_supported() == [("de", "vat"), ("uk", "vat")]
+
+
+class TestTaxKnowledgeTools:
+    @pytest.mark.asyncio
+    async def test_list_supported_jurisdictions(self, tmp_path):
+        uk_dir = tmp_path / "uk"
+        uk_dir.mkdir()
+        (uk_dir / "vat.md").write_text("## Standard Rate\n20%\n", encoding="utf-8")
+        tools = TaxKnowledgeAgentToolSet(store_base_path=str(tmp_path))
+        result = await tools.list_supported_jurisdictions()
+        text = result["content"][0]["text"]
+        assert "uk" in text
+        assert "vat" in text
+
+    @pytest.mark.asyncio
+    async def test_get_tax_rates_uk_vat(self):
+        tools = TaxKnowledgeAgentToolSet()
+        result = await tools.get_tax_rates(jurisdiction="uk", tax_type="vat", year="2026")
+        parsed = json.loads(result["content"][0]["text"])
+        assert parsed["success"] is True
+        assert parsed["jurisdiction"] == "uk"
+        assert parsed["tax_type"] == "vat"
+        assert "standard" in parsed["rates"]
+
+    @pytest.mark.asyncio
+    async def test_search_tax_knowledge(self, tmp_path):
+        uk_dir = tmp_path / "uk"
+        uk_dir.mkdir()
+        (uk_dir / "vat.md").write_text(
+            "## EU B2B Sales\nZero-rated when customer has valid EU VAT number.\n",
+            encoding="utf-8",
+        )
+        tools = TaxKnowledgeAgentToolSet(store_base_path=str(tmp_path))
+        result = await tools.search_tax_knowledge(jurisdiction="uk", tax_type="vat", query="EU B2B")
+        parsed = json.loads(result["content"][0]["text"])
+        assert parsed["success"] is True
+        assert len(parsed["results"]) == 1
+        assert "Zero-rated" in parsed["results"][0]["content"]
