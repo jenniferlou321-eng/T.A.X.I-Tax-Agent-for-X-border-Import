@@ -1,0 +1,36 @@
+# T.A.X.I. — Conda environments
+#
+# This file defines TWO conda envs to keep the toolchain isolated:
+#   • `taxagent`  — Python 3.11 + backend deps (FastAPI, pydantic v2, etc.)
+#   • `fe-build`  — Node.js 20 from conda-forge (glibc-2.17-compatible sysroot)
+#
+# The backend env is what `./start_backend.sh` and the test suite use.
+# The frontend env is what `./start_frontend_build.sh` uses to rebuild
+# frontend/dist/ on a CentOS 7 / glibc 2.17 host.
+#
+# ── One-shot setup (CentOS 7 / glibc 2.17) ──
+#   curl -sSLO https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh
+#   bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -b -p $HOME/miniconda3
+#   $HOME/miniconda3/bin/conda env create -f environment.yml
+#   $HOME/miniconda3/bin/conda create -n fe-build -y -c conda-forge nodejs=20
+#
+# ── Daily use ──
+#   ./start_backend.sh                # auto-activates `taxagent`
+#   ./start_frontend_build.sh         # auto-activates `fe-build` and rebuilds
+#   pytest                             # tests (works without manual activate)
+#
+# The repo's `.venv` is a symlink into the `taxagent` env, so any tool that
+# references `.venv/bin/python` keeps working.
+name: taxagent
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - pip
+
+  # ── Server runtime (also pinned in requirements.txt for pip-only installs) ──
+  - pip:
+      - -r requirements.txt
+      - -r requirements-dev.txt

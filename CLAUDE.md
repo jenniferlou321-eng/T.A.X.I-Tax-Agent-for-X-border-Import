@@ -277,12 +277,49 @@ To keep the public repo clean, the following have been **excluded from version c
 
 ## Current deployment topology (2026-06)
 
-This dev host runs both servers in the background:
+The repo uses **two conda envs** under one Miniconda install, both auto-activated by the launch scripts.
 
-| Port | Process | Started by |
-|---|---|---|
-| `:8765` | `uvicorn` (FastAPI) — `/opt/python-musl/python/bin/python3.11 run_backend.py` (target `backend.main:app`) | `nohup` in this session |
-| `:9000` | `python3 scripts/serve_frontend_9000.py` (Python 3.6 stdlib, SPA fallback) | `nohup bash scripts/serve_frontend_9000.sh` |
+| Port | Process | Started by | Conda env |
+|---|---|---|---|
+| `:8765` | `uvicorn` (FastAPI) — `python -m uvicorn backend.main:app` | `nohup ./start_backend.sh` | `taxagent` (Python 3.11 + backend deps) |
+| `:9000` | `python3 scripts/serve_frontend_9000.py` (Python 3.6 stdlib, SPA fallback) | `nohup bash scripts/serve_frontend_9000.sh` | system Python (static file server, no deps) |
 
-- The musl standalone Python at `/opt/python-musl/python/bin/python3.11` was used because the system Python is 3.6.8 (the repo requires `>=3.9`). Server deps were installed with `--only-binary :all:`; `playwright` (only used in `scripts/hmrc_oauth_*.py`, not by the server) was skipped because it has no musl wheels.
-- The frontend `dist/` was built with Vite **4.5.5** (Vite 5+ requires Node 18+, Node 16 is what's on this box). Tailwind v4 was stripped from the build because the `@tailwindcss/vite` plugin needs Node 20+; the app is fully functional (routes, API calls, WebSocket chat) but unstyled in this dev build. To get a styled build, run `npm install && npm run build` (in `frontend/`) on a host with Node 20+ — the `package.json` is pinned to original-version deps.
+**Conda envs** (`$HOME/miniconda3/envs/`):
+
+| Env | Python / Node | Contents | Symlink |
+|---|---|---|---|
+| `taxagent` | Python 3.11.15 | pydantic 2.13.4, fastapi, uvicorn, pytest, claude-agent-sdk, playwright, etc. | `.venv → ../../miniconda3/envs/taxagent` |
+| `fe-build`  | Node 20.20.2 | npm 10.8.2 (used to run Vite 4.5.5 + Tailwind v3) | — |
+
+**Why conda**:
+- The host runs CentOS 7.9 / glibc 2.17, which can't run the official Node 18+ binaries. `conda-forge` ships Node 20 built against a glibc 2.17-compatible sysroot, which works.
+- The system Python is 3.6.8 (too old for pydantic v2 + structural pattern matching). The `taxagent` conda env provides Python 3.11.
+- The legacy `/opt/python-musl/python` (pydantic v1) has been removed — pydantic v1 is incompatible with the current code.
+
+**One-shot install** (if the envs don't exist):
+
+```bash
+# 1) Miniconda (glibc 2.17-compatible, must be the old 4.10.3 build)
+curl -sSLO https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh
+bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -b -p $HOME/miniconda3
+
+# 2) Backend env
+$HOME/miniconda3/bin/conda env create -f environment.yml
+
+# 3) Frontend env
+$HOME/miniconda3/bin/conda create -n fe-build -y -c conda-forge nodejs=20
+```
+
+**Daily use** — both launchers auto-detect Miniconda (`$HOME/miniconda3`, `/opt/miniconda3`, `$CONDA_BASE` override) and activate the right env:
+
+```bash
+./start_backend.sh                # auto-activates `taxagent`
+./start_frontend_build.sh         # auto-activates `fe-build` and rebuilds dist
+pytest                             # works because .venv is the taxagent env
+```
+
+**Frontend build output**:
+- Vite 4.5.5 + React 18 + Tailwind **v3** (PostCSS pipeline)
+- CSS ~34 KB (Tailwind utilities), JS ~343 KB
+- Tailwind v4 / Vite 5 require Node 20+ on a modern host — upgrade only after retiring CentOS 7
+- `client.ts` ships the FormData multipart fix (CSV uploads no longer get JSON Content-Type forced)
