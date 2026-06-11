@@ -122,6 +122,68 @@ _TAXPAYER_ID_KEYS = (
     "taxpayer_id", "vrn", "nino", "ctref", "empref", "utr", "transaction_id",
 )
 
+# AgentToolSet 子类里"接收 dict 作为唯一参数 / 最后一个关键字参数"的方法
+# 的形参名白名单。仓库 5 套 jurisdiction (UK VAT/SA/CT/PAYE/SDLT) 的方法
+# 签名有两种风格:
+#   - 模式 1 (UK CT args 风格):    def f(self, args: dict)            # 1 arg
+#   - 模式 2 (UK VAT validate 风格): def f(self, return_data: dict)     # 1 arg
+#   - 模式 3 (UK VAT submit 风格):   def f(self, a, b, return_data: dict)  # 3 args
+# 修 Bug (2026-06): 原版 takes_dict 只识别 args/data/params 三种, 把上面
+# 模式 2/3 全部漏判, 导致 wrapper 走 ** 展开 → TypeError。扩展白名单到
+# return_data, 并支持"末尾是 dict 的多参方法"。
+_DICT_PARAM_NAMES = frozenset({"args", "data", "params", "return_data"})
+
+
+def _is_takes_dict(params: list[str]) -> tuple[bool, str | None]:
+    """检测方法是否以 dict 作为唯一参数 / 末尾关键字参数。
+
+    Returns:
+        (takes_dict, dict_param_name) — 第二个返回值告诉 wrapper 该把
+        mapped 灌进哪个形参名 (用于 3-arg submit 模式把 taxpayer_id 等
+        抽出来)。
+    """
+    non_self = [p for p in params if p != "self"]
+    if not non_self:
+        return False, None
+    if len(non_self) == 1 and non_self[0] in _DICT_PARAM_NAMES:
+        return True, non_self[0]
+    # 模式 3: 末尾参数是 dict
+    if len(non_self) >= 2 and non_self[-1] in _DICT_PARAM_NAMES:
+        return True, non_self[-1]
+    return False, None
+
+
+def _enrich_input_schema(schema: Any, tool_name: str) -> dict:
+    """把 input_schema 统一成 JSON Schema dict (带 description)
+
+    兼容 3 种输入:
+    - Python type dict:  {"vrn": str}               → {"type": "object", "properties": {...}}
+    - JSON Schema dict:   {"type": "object", ...}    → 原样返回 (enrich description)
+    - 其他:                                            → {"type": "object"}
+    """
+    if not isinstance(schema, dict):
+        return {"type": "object"}
+    if schema.get("type") == "object" or "properties" in schema:
+        return schema
+    # Python type dict 转换
+    properties = {}
+    for k, v in schema.items():
+        properties[k] = _py_type_to_json(v, k)
+    return {"type": "object", "properties": properties}
+
+
+def _py_type_to_json(t: Any, field: str) -> dict:
+    """Python type → JSON Schema, 带 description"""
+    if t is str:
+        return {"type": "string", "description": f"{field} (string)"}
+    if t is int:
+        return {"type": "integer", "description": f"{field} (integer)"}
+    if t is float:
+        return {"type": "number", "description": f"{field} (number)"}
+    if t is bool:
+        return {"type": "boolean", "description": f"{field} (boolean)"}
+    return {"type": "string", "description": f"{field}"}
+
 
 def _map_taxpayer_id(args: dict) -> dict:
     """将 LLM 传入的常见税种 ID 字段统一为 taxpayer_id
@@ -165,23 +227,37 @@ def _make_tool_wrapper(tool_set, method_name: str, meta: dict):
     actual_method = _resolve_method_name(tool_set, method_name)
     method = getattr(tool_set, actual_method)
 
-    # 检查方法签名：如果接受单一 dict 参数（如 `def calculate(args: dict)`），
-    # 则整个 args 作为单一参数传入；否则展开为 kwargs
+    # 检查方法签名: 用 _is_takes_dict 检测是否"以 dict 收参"
+    # 模式 1 (UK CT args 风格):    def f(self, args: dict)              → 整 dict 灌 args
+    # 模式 2 (UK VAT validate):    def f(self, return_data: dict)       → 整 dict 灌 return_data
+    # 模式 3 (UK VAT submit):      def f(self, a, b, return_data: dict) → 抽 a/b 出来, 剩下的灌 return_data
     import inspect
     sig = inspect.signature(method)
-    params = list(sig.parameters.keys())
-    # 跳过 self
-    params = [p for p in params if p != "self"]
-    takes_dict = (
-        len(params) == 1
-        and params[0] in ("args", "data", "params")
-    )
+    raw_params = list(sig.parameters.keys())
+    takes_dict, dict_param_name = _is_takes_dict(raw_params)
+    # 在 3-arg 模式里, 形参名列表里"前 N-1 个非 self 参数"是普通 kwargs (taxpayer_id, period_key 等)
+    # 我们需要按"形参名顺序"从 mapped 里抽值, 避免 LLM 传的"驼峰"字段 (vrn) 与形参 (taxpayer_id) 失配
+    method_param_names = [p for p in raw_params if p != "self"]
+
+    # 把 input_schema 升级成 JSON Schema (让 LLM 看到 description)
+    enriched_schema = _enrich_input_schema(meta["input_schema"], meta["name"])
+    meta = {**meta, "input_schema": enriched_schema}
 
     async def _wrapper(args: dict) -> dict:
         # 映射各种税种 ID 字段名到统一的 taxpayer_id
         mapped = _map_taxpayer_id(args)
-        if takes_dict:
-            return await method(mapped)
+        if takes_dict and dict_param_name is not None:
+            if len(method_param_names) >= 2 and method_param_names[-1] == dict_param_name:
+                # 模式 3: 把 dict_param_name 之外的 kwargs 抽出来, 剩下的整体灌 dict_param_name
+                non_dict_kwargs = {
+                    p: mapped[p] for p in method_param_names[:-1] if p in mapped
+                }
+                return await method(
+                    **non_dict_kwargs,
+                    **{dict_param_name: mapped},
+                )
+            # 模式 1/2: 整 dict 灌进 dict_param_name
+            return await method(**{dict_param_name: mapped})
         return await method(**mapped)
 
     # 复制元数据用于 MCP Server 注册

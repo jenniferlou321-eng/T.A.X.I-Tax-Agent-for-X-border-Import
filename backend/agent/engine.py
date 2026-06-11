@@ -488,7 +488,9 @@ class TaxAgentEngine:
                         yield "\n---\n"
 
         except Exception as e:
-            yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax...\n"
+            yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax (无 MCP 工具)...\n"
+            # 显式告诉前端 / LLM 工具不可用 — 防止 LLM 在没有工具的情况下编数字
+            yield {"__agui__": "tool_unavailable", "reason": f"sdk_fallback: {type(e).__name__}: {str(e)[:120]}"}
             try:
                 await client.disconnect()
             except Exception:
@@ -501,6 +503,13 @@ class TaxAgentEngine:
                 system_prompt = get_system_prompt(jurisdiction, tax_type)
             except Exception:
                 system_prompt = "You are T.A.X.I., a helpful tax filing assistant."
+            # 在 fallback prompt 末尾追加: 工具不可用, 禁止编数字
+            system_prompt = (
+                system_prompt
+                + "\n\n[Tool-Failure Notice] MCP tools are currently unavailable. "
+                "Do NOT fabricate any numeric tax values. If the user asks for "
+                "calculations, tell them the toolchain is offline and stop."
+            )
             async for chunk in self._httpx_chat(
                 session=session,
                 user_message=user_message,
@@ -763,13 +772,47 @@ class TaxAgentEngine:
         return self.sessions[session_id]
 
     def _parse_tool_result(self, msg: ToolResultBlock) -> dict:
-        """解析 ToolResultBlock 中的 JSON 结果。"""
-        try:
-            if hasattr(msg, "content") and msg.content:
-                for block in msg.content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = block.get("text", "")
-                        return json.loads(text)
-            return {"success": True}
-        except (json.JSONDecodeError, AttributeError):
-            return {"success": True}
+        """把 ToolResultBlock 转成 dict, 失败时返回明确的 error (不再静默吞错)。
+
+        修 Bug (2026-06): 原版在 content 为空 / 不可解析时一律返回
+        {"success": True}, 让 LLM 误以为工具成功, 同时也掩盖了协议层错误
+        (例如 wrapper 抛 TypeError 被 SDK 吞掉)。新版返回
+        {"success": False, "error": "..."} 并透传 is_error 标志。
+        """
+        is_error = bool(getattr(msg, "is_error", None))
+        tool_use_id = getattr(msg, "tool_use_id", "unknown")
+
+        content = getattr(msg, "content", None)
+        # 路径 1: content 是 list[dict] (MCP 规范)
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text", "")
+                    try:
+                        parsed = json.loads(text)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = {"raw": text}
+                    if isinstance(parsed, dict):
+                        if is_error:
+                            parsed["success"] = False
+                            parsed.setdefault("is_error", True)
+                        return parsed
+                    return {"success": not is_error, "raw": parsed}
+        # 路径 2: content 是 str
+        elif isinstance(content, str) and content:
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                parsed = {"raw": content}
+            if isinstance(parsed, dict):
+                if is_error:
+                    parsed["success"] = False
+                return parsed
+            return {"success": not is_error, "raw": parsed}
+
+        # content 为空 / 缺失 → 明确报错, 不再静默
+        return {
+            "success": False,
+            "error": f"tool result for {tool_use_id} has no content",
+            "is_error": is_error,
+        }

@@ -256,6 +256,16 @@ class UKVATAgentToolSet(AgentToolSet):
 
         ir_dict = ir.model_dump(mode="json")
 
+        # 工具链互操作: ImportResult Pydantic 模型没有 `company` / `metadata`
+        # 字段（erp_models.py:55），但业务分析器
+        # (business_analyzer.analyze_business_data) 期望 top-level `company`。
+        # 把 metadata 子树平铺到顶层，避免 agent 端"再调一次 analyze 时手动塞
+        # company"的脆弱模式。
+        metadata = ir_dict.pop("metadata", None) or {}
+        for k, v in metadata.items():
+            # 不覆盖已有字段（防御性）
+            ir_dict.setdefault(k, v)
+
         return _tool_ok({
             "success": True,
             "import_result": ir_dict,
@@ -294,6 +304,28 @@ class UKVATAgentToolSet(AgentToolSet):
         if not vrn or not period_key:
             return _tool_error("VRN and period_key are required")
 
+        # 默认使用模拟模式 (与 get_obligations 对齐)。这样 Kimi/ANTHROPIC
+        # 凭证不会被误用为 HMRC 凭证, 演示时也不需要真 OAuth token。
+        import os
+        hmrc_mode = os.environ.get("HMRC_MODE", "mock").lower()
+        if hmrc_mode != "live":
+            # mock 模式: 不调真 HMRC, 返回一个伪 receipt
+            return _tool_ok({
+                "success": True,
+                "mode": "mock",
+                "processing_date": "2026-04-07",
+                "form_bundle_number": f"MOCK-{period_key}-{vrn[:4]}",
+                "payment_indicator": "BANK",
+                "charge_ref_number": f"CHG-MOCK-{period_key}",
+                "submitted_body": {
+                    "periodKey": period_key,
+                    "vatDueSales": round(float(return_data.get("vat_due_sales", 0)), 2),
+                    "totalVatDue": round(float(return_data.get("total_vat_due", 0)), 2),
+                    "netVatDue": round(float(return_data.get("net_vat_due", 0)), 2),
+                },
+                "warning": "Mock mode: this was NOT actually submitted to HMRC. Set HMRC_MODE=live to file a real return.",
+            })
+
         try:
             body = {
                 "periodKey": period_key,
@@ -313,6 +345,7 @@ class UKVATAgentToolSet(AgentToolSet):
             receipt = await service.submit_return(vrn=vrn, body=body)
             result = {
                 "success": True,
+                "mode": "live",
                 "processing_date": receipt.get("processingDate"),
                 "form_bundle_number": receipt.get("formBundleNumber"),
                 "payment_indicator": receipt.get("paymentIndicator"),
@@ -329,6 +362,25 @@ class UKVATAgentToolSet(AgentToolSet):
         vrn = taxpayer_id
         if not vrn or not period_key:
             return _tool_error("VRN and period_key are required")
+
+        # mock 短路 (与 submit_return / get_obligations 对齐)
+        import os
+        hmrc_mode = os.environ.get("HMRC_MODE", "mock").lower()
+        if hmrc_mode != "live":
+            return _tool_ok({
+                "success": True,
+                "mode": "mock",
+                "period_key": period_key,
+                "vat_due_sales": "0.00",
+                "vat_due_acquisitions": "0.00",
+                "total_vat_due": "0.00",
+                "vat_reclaimed": "0.00",
+                "net_vat_due": "0.00",
+                "total_sales_ex_vat": 0,
+                "total_purchases_ex_vat": 0,
+                "received": None,
+                "warning": "Mock mode: no real return on file with HMRC.",
+            })
 
         try:
             service = _build_hmrc_service(vrn)
@@ -369,80 +421,252 @@ class UKVATAgentToolSet(AgentToolSet):
     # ── 工具元数据 ──
 
     def get_tool_metadata(self) -> list[dict]:
+        """返回 8 个 UK VAT 工具的元数据 (JSON Schema 完整版)。
+
+        input_schema 全部是 JSON Schema dict (不是 Python type), 让 LLM 看到
+        字段 description + 嵌套对象结构。
+
+        关键设计 (2026-06 修复):
+        - validate_vat_return / submit_vat_return 的 9-Box 字段包成
+          return_data 子对象 (而不是平面展开), 跟 _make_tool_wrapper 的
+          takes_dict 检测对齐, 避免 **mapped 展开时 TypeError。
+        - 输入顶层只放"非 9-Box 字段" (taxpayer_id, period_key 等) + return_data 子对象。
+        """
         return [
             {
                 "name": "get_vat_obligations",
-                "description": "Query HMRC for VAT filing obligations for a given VRN.",
-                "input_schema": {"vrn": str, "status_filter": str},
+                "description": (
+                    "Query HMRC for VAT filing obligations for a given VRN. "
+                    "Returns open (status='O') and fulfilled (status='F') periods."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "taxpayer_id": {
+                            "type": "string",
+                            "description": (
+                                "VRN (VAT Registration Number), 9 digits, e.g. '123456789'. "
+                                "Alternative name 'vrn' is also accepted and mapped to taxpayer_id."
+                            ),
+                        },
+                        "status_filter": {
+                            "type": "string",
+                            "enum": ["", "O", "F"],
+                            "description": (
+                                "Filter by status: '' = all, 'O' = Open, 'F' = Fulfilled. "
+                                "Default '' returns both."
+                            ),
+                        },
+                    },
+                    "required": ["taxpayer_id"],
+                },
             },
             {
                 "name": "calculate_vat_return",
-                "description": "Calculate UK VAT Return 9-box values from line items.",
-                "input_schema": {"line_items_json": str},
+                "description": (
+                    "Calculate UK VAT Return 9-box values from pre-aggregated line items. "
+                    "Use this when you already have category-level totals. For raw invoice data, "
+                    "use `analyze_business_data` first."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "line_items_json": {
+                            "type": "string",
+                            "description": (
+                                "JSON array of line items, e.g. "
+                                "'[{\"category\":\"vat_due_sales\",\"amount\":2500.00,\"currency\":\"GBP\"}]'. "
+                                "Each item: category (one of vat_due_sales, vat_due_acquisitions, "
+                                "vat_reclaimed_purchases, total_sales_ex_vat, total_purchases_ex_vat, "
+                                "total_goods_supplied_eu, total_goods_acquired_eu), "
+                                "amount (number, GBP), currency (default 'GBP')."
+                            ),
+                        },
+                    },
+                    "required": ["line_items_json"],
+                },
             },
             {
                 "name": "validate_vat_return",
-                "description": "Validate a VAT Return calculation for HMRC compliance.",
+                "description": (
+                    "Validate a UK VAT Return 9-Box calculation for HMRC compliance. "
+                    "Checks Box 5 >= 0, Box 1 <= 9.99M (annual scheme cap), period_key format, "
+                    "and other HMRC rules. Pass the 9-Box values as a `return_data` sub-object."
+                ),
                 "input_schema": {
-                    "vat_due_sales": str,
-                    "vat_due_acquisitions": str,
-                    "vat_reclaimed_purchases": str,
-                    "total_sales_ex_vat": str,
-                    "total_purchases_ex_vat": str,
-                    "total_goods_supplied_eu": str,
-                    "total_goods_acquired_eu": str,
+                    "type": "object",
+                    "properties": {
+                        "return_data": {
+                            "type": "object",
+                            "description": "9-Box VAT return values in HMRC field-name format",
+                            "properties": {
+                                "vat_due_sales": {"type": "string", "description": "Box 1: VAT due on sales, e.g. '2500.00'"},
+                                "vat_due_acquisitions": {"type": "string", "description": "Box 2: VAT due on EU acquisitions, e.g. '0.00'"},
+                                "vat_reclaimed_purchases": {"type": "string", "description": "Box 4: VAT reclaimed on purchases, e.g. '1200.00'"},
+                                "total_sales_ex_vat": {"type": "string", "description": "Box 6: Total sales ex VAT (integer pounds), e.g. '12500'"},
+                                "total_purchases_ex_vat": {"type": "string", "description": "Box 7: Total purchases ex VAT (integer pounds), e.g. '6000'"},
+                                "total_goods_supplied_eu": {"type": "string", "description": "Box 8: Goods supplied to EU (integer pounds), e.g. '0'"},
+                                "total_goods_acquired_eu": {"type": "string", "description": "Box 9: Goods acquired from EU (integer pounds), e.g. '0'"},
+                            },
+                            "required": [
+                                "vat_due_sales", "vat_due_acquisitions",
+                                "vat_reclaimed_purchases", "total_sales_ex_vat",
+                                "total_purchases_ex_vat", "total_goods_supplied_eu",
+                                "total_goods_acquired_eu",
+                            ],
+                        },
+                    },
+                    "required": ["return_data"],
                 },
             },
             {
                 "name": "submit_vat_return",
-                "description": "Submit a VAT Return to HMRC. WARNING: irreversible action.",
+                "description": (
+                    "Submit a UK VAT Return to HMRC. **IRREVERSIBLE ACTION** - "
+                    "only call after explicit user confirmation. The 9-Box values go in "
+                    "the `return_data` sub-object; `taxpayer_id` and `period_key` are top-level."
+                ),
                 "input_schema": {
-                    "vrn": str,
-                    "period_key": str,
-                    "vat_due_sales": str,
-                    "vat_due_acquisitions": str,
-                    "total_vat_due": str,
-                    "vat_reclaimed_purchases": str,
-                    "net_vat_due": str,
-                    "total_sales_ex_vat": str,
-                    "total_purchases_ex_vat": str,
-                    "total_goods_supplied_eu": str,
-                    "total_goods_acquired_eu": str,
+                    "type": "object",
+                    "properties": {
+                        "taxpayer_id": {
+                            "type": "string",
+                            "description": "VRN, 9 digits, e.g. '123456789'. ('vrn' also accepted.)",
+                        },
+                        "period_key": {
+                            "type": "string",
+                            "description": (
+                                "HMRC period identifier, e.g. '26A1' = 2026 Q1 (Jan-Mar). "
+                                "Format: <2-digit-year><A-M> where A=Jan/Feb Q1, B=May/Jun Q2, etc."
+                            ),
+                        },
+                        "return_data": {
+                            "type": "object",
+                            "description": "9-Box values in HMRC field-name format (same shape as validate_vat_return).",
+                            "properties": {
+                                "vat_due_sales": {"type": "string", "description": "Box 1"},
+                                "vat_due_acquisitions": {"type": "string", "description": "Box 2"},
+                                "total_vat_due": {"type": "string", "description": "Box 3 (= Box 1 + Box 2)"},
+                                "vat_reclaimed_purchases": {"type": "string", "description": "Box 4"},
+                                "net_vat_due": {"type": "string", "description": "Box 5 (= |Box 3 - Box 4|)"},
+                                "total_sales_ex_vat": {"type": "string", "description": "Box 6 (integer pounds)"},
+                                "total_purchases_ex_vat": {"type": "string", "description": "Box 7 (integer pounds)"},
+                                "total_goods_supplied_eu": {"type": "string", "description": "Box 8 (integer pounds)"},
+                                "total_goods_acquired_eu": {"type": "string", "description": "Box 9 (integer pounds)"},
+                            },
+                            "required": [
+                                "vat_due_sales", "vat_due_acquisitions", "total_vat_due",
+                                "vat_reclaimed_purchases", "net_vat_due",
+                                "total_sales_ex_vat", "total_purchases_ex_vat",
+                                "total_goods_supplied_eu", "total_goods_acquired_eu",
+                            ],
+                        },
+                    },
+                    "required": ["taxpayer_id", "period_key", "return_data"],
                 },
             },
             {
                 "name": "get_vat_return",
-                "description": "Retrieve a previously submitted VAT Return from HMRC.",
-                "input_schema": {"vrn": str, "period_key": str},
-            },
-            {
-                "name": "analyze_business_data",
-                "description": "Analyze raw business invoice data and calculate UK VAT Return 9-box values with regulatory compliance notes.",
-                "input_schema": {"company_data_json": str},
-            },
-            {
-                "name": "ingest_erp_data",
-                "description": "Load demo case (source='demo', case_id='...') or parse CSV (source='csv', csv_base64='...'). Returns ImportResult for the Agent to use in subsequent calculations.",
+                "description": "Retrieve a previously submitted UK VAT Return from HMRC.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "source": {"type": "string", "enum": ["demo", "csv"]},
-                        "case_id": {"type": "string", "description": "demo case ID, e.g. 'techflow_q1_2026'"},
-                        "csv_base64": {"type": "string", "description": "base64-encoded CSV bytes"},
-                        "profile": {"type": "string", "description": "force CSV profile, e.g. 'generic'"},
+                        "taxpayer_id": {
+                            "type": "string",
+                            "description": "VRN, 9 digits, e.g. '123456789'.",
+                        },
+                        "period_key": {
+                            "type": "string",
+                            "description": "HMRC period identifier, e.g. '26A1'.",
+                        },
+                    },
+                    "required": ["taxpayer_id", "period_key"],
+                },
+            },
+            {
+                "name": "analyze_business_data",
+                "description": (
+                    "Analyze raw business invoice data and calculate UK VAT Return 9-Box "
+                    "values with regulatory compliance notes. Returns `nine_box` in HMRC "
+                    "field-name format (vat_due_sales, total_sales_ex_vat, etc.) - pass "
+                    "this directly to `validate_vat_return` / `submit_vat_return` as the "
+                    "`return_data` argument. Also returns `nine_box_legacy` (box1_xxx style) "
+                    "for one release as backwards compatibility."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "company_data_json": {
+                            "type": "string",
+                            "description": (
+                                "JSON string of company data. Accepts both styles:\n"
+                                "- raw style: { company, sales_invoices, purchase_invoices, ... }\n"
+                                "- ImportResult style: output of `ingest_erp_data` "
+                                "(with sales, purchases, erp_provided_boxes, optional metadata.company)\n"
+                                "The `analyze_business_data` tool handles field-name translation internally."
+                            ),
+                        },
+                    },
+                    "required": ["company_data_json"],
+                },
+            },
+            {
+                "name": "ingest_erp_data",
+                "description": (
+                    "Load raw ERP data: either a built-in demo case (source='demo', case_id='...') "
+                    "or a user-supplied CSV (source='csv', csv_base64='...'). Returns an "
+                    "ImportResult (sales, purchases, erp_provided_boxes, metadata) that you can "
+                    "serialize and pass to `analyze_business_data` as `company_data_json`. "
+                    "If case_id is unknown, call with case_id omitted to get the available_cases list."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "source": {
+                            "type": "string",
+                            "enum": ["demo", "csv"],
+                            "description": "'demo' = built-in case; 'csv' = user-supplied CSV (base64).",
+                        },
+                        "case_id": {
+                            "type": "string",
+                            "description": "demo case ID, e.g. 'cn_parent_uk_sub_q1_2026', 'techflow_q1_2026'. Omit to list available cases.",
+                        },
+                        "csv_base64": {
+                            "type": "string",
+                            "description": "base64-encoded CSV bytes (max 10MB). Required when source='csv'.",
+                        },
+                        "profile": {
+                            "type": "string",
+                            "description": "Force CSV profile, e.g. 'generic'. Auto-detected by default.",
+                        },
                     },
                     "required": ["source"],
                 },
             },
             {
                 "name": "filter_invoices",
-                "description": "Filter/list invoices from current session's ImportResult. v0 stub — InvoiceMultiSelectPanel uses direct API.",
+                "description": (
+                    "Filter / list invoices from the current session's ImportResult. "
+                    "**v0 STUB**: returns an empty list and a note pointing to "
+                    "POST /api/erp/cases/{case_id} for direct inspection. Do not rely on this tool."
+                ),
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "txn_type": {"type": "string", "enum": ["sale", "purchase"]},
-                        "flagged_only": {"type": "boolean"},
-                        "invoice_ids": {"type": "array", "items": {"type": "string"}},
+                        "txn_type": {
+                            "type": "string",
+                            "enum": ["sale", "purchase"],
+                            "description": "Filter by transaction type.",
+                        },
+                        "flagged_only": {
+                            "type": "boolean",
+                            "description": "Only return invoices flagged for review (v0: not implemented).",
+                        },
+                        "invoice_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Limit to specific invoice IDs (v0: not implemented).",
+                        },
                     },
                 },
             },

@@ -309,7 +309,23 @@ def generate_analysis_report(data: dict, summary: VATSummary) -> dict:
                 "period_key": summary.period_key,
             },
         },
+        # HMRC 字段名 (与 validate_vat_return / submit_vat_return / HMRC API 一致)。
+        # LLM 拿到 analyze 结果后, 直接以这个子树的字段调 validate / submit,
+        # 不必再翻译 box1_xxx 命名。
         "nine_box": {
+            "vat_due_sales": float(summary.box1_vat_due_sales),
+            "vat_due_acquisitions": float(summary.box2_vat_due_acquisitions),
+            "total_vat_due": float(summary.box3_total_vat_due),
+            "vat_reclaimed_purchases": float(summary.box4_vat_reclaimed),
+            "net_vat_due": float(summary.box5_net_vat_due),
+            "total_sales_ex_vat": summary.box6_total_sales,
+            "total_purchases_ex_vat": summary.box7_total_purchases,
+            "total_goods_supplied_eu": summary.box8_goods_supplied_eu,
+            "total_goods_acquired_eu": summary.box9_goods_acquired_eu,
+        },
+        # 旧 box1_xxx 命名作为 deprecated alias 保留一期 (2026-06)。
+        # 下一版本删除 — 现有前端 / 测试依赖它, 不要静默删除。
+        "nine_box_legacy": {
             "box1_vat_due_sales": float(summary.box1_vat_due_sales),
             "box2_vat_due_acquisitions": float(summary.box2_vat_due_acquisitions),
             "box3_total_vat_due": float(summary.box3_total_vat_due),
@@ -319,6 +335,17 @@ def generate_analysis_report(data: dict, summary: VATSummary) -> dict:
             "box7_total_purchases": summary.box7_total_purchases,
             "box8_goods_supplied_eu": summary.box8_goods_supplied_eu,
             "box9_goods_acquired_eu": summary.box9_goods_acquired_eu,
+        },
+        "nine_box_field_naming": {
+            "current": "hmrc",
+            "deprecated_since": "2026-06",
+            "note": (
+                "Use `nine_box` (HMRC field names like `vat_due_sales`, "
+                "`total_sales_ex_vat`) when calling validate_vat_return or "
+                "submit_vat_return. The `nine_box_legacy` keys (e.g. "
+                "`box1_vat_due_sales`) are kept for one release for "
+                "backwards compatibility and will be removed."
+            ),
         },
         "sales_breakdown": {
             "domestic_standard_rate": {
@@ -457,6 +484,62 @@ def generate_analysis_report(data: dict, summary: VATSummary) -> dict:
 
 # ── Main Entry Point ──
 
+# 字段映射表: ImportResult Pydantic 模型 (tax_code T1/T2/T0) → raw 风格
+# (type 字符串) — 算法内部的销售/采购 if/elif 分支只识别 raw 字符串。
+# 修复 Bug A: 让 analyze_business_data 接受 ingest_erp_data 的输出。
+_TAX_CODE_TO_TYPE = {
+    "T1": "domestic_b2b",     # 销售/采购的 20% 标准税率
+    "T2": "eu_acquisition",   # 欧盟采购
+    "T8": "import",           # 进口（含 C79）
+    "T9": "eu_b2b",           # 欧盟 B2B 销售
+    "T0": "zero_rated",       # 默认映射（购买侧会被下方覆盖为 domestic/exempt）
+}
+
+
+def _importresult_to_raw_row(row: dict, side: str) -> dict:
+    """把 ImportResult 风格的 dict（tax_code / is_eu / is_recoverable ...）
+    转成 raw 风格 dict（type 字符串 / net / vat / ...），让下面的算法
+    if/elif 分支能识别。"""
+    out = dict(row)
+    tax_code = row.get("tax_code", "")
+
+    if side == "sale":
+        # 销售侧: 决定 inv_type
+        if tax_code == "T9":
+            t = "eu_b2b"
+        elif tax_code == "T0":
+            # 出口 / 零税率 / 集团内部都视作 zero_rated（0 VAT 计入 box6）
+            t = "zero_rated" if not row.get("is_eu") else "intra_group"
+        else:
+            t = "domestic_b2b"
+        out["type"] = t
+    else:
+        # 采购侧
+        if tax_code == "T2":
+            t = "eu_acquisition"
+        elif tax_code == "T8":
+            t = "import"
+        elif tax_code == "T0":
+            if row.get("is_recoverable") is False:
+                t = "exempt"  # 包含 non_recoverable（业务招待）
+            else:
+                t = "domestic"
+        else:
+            t = "domestic"
+        out["type"] = t
+
+    # 算法读 net / vat；ImportResult 用 net_amount / vat_amount
+    out.setdefault("net", row.get("net_amount", 0))
+    out.setdefault("vat", row.get("vat_amount", 0))
+    out.setdefault("vat_gbp", row.get("vat_amount", 0))
+    out.setdefault("net_gbp", row.get("net_amount", 0))
+    # algorithm 也读 is_eu_acquisition（EU 采购特殊处理）
+    out.setdefault("is_eu_acquisition", row.get("is_eu_acquisition", False))
+    out.setdefault("recoverable", row.get("is_recoverable", True))
+    out.setdefault("acquisition_vat", row.get("vat_amount", 0))
+    return out
+
+
 def analyze_business_data(company_data_json: str) -> dict:
     """分析原始企业数据并生成 VAT 完整报告。
 
@@ -470,6 +553,30 @@ def analyze_business_data(company_data_json: str) -> dict:
         data = json.loads(company_data_json)
     except json.JSONDecodeError as e:
         return {"success": False, "error": f"Invalid JSON: {e}"}
+
+    # 工具链兼容: 一些上游工具（特别是 ingest_erp_data 的旧输出、CSV
+    # 解析路径）会把 company 嵌套在 metadata.company 下面。把 metadata
+    # 子树向上提一层，让下面的算法对调用方是扁平的。
+    if "company" not in data and isinstance(data.get("metadata"), dict):
+        meta = data.pop("metadata") or {}
+        for k, v in meta.items():
+            data.setdefault(k, v)
+
+    # 字段映射: ingest_erp_data (ImportResult 风格) vs transactions.json
+    # (老式 raw 风格) 给的字段名不一样。算法内部用 raw 风格字段名
+    # (sales_invoices / purchase_invoices / type)，所以在入口处做翻译：
+    #   - `sales` → `sales_invoices`
+    #   - `purchases` → `purchase_invoices`
+    #   - `tax_code` (T1/T2/T0...) → `type` (domestic_b2b / eu_acquisition / ...)
+    # 翻译失败时（旧 case / 其他来源）原样保留字段，下游逻辑不会崩。
+    if "sales" in data and "sales_invoices" not in data:
+        data["sales_invoices"] = [
+            _importresult_to_raw_row(s, "sale") for s in data["sales"]
+        ]
+    if "purchases" in data and "purchase_invoices" not in data:
+        data["purchase_invoices"] = [
+            _importresult_to_raw_row(p, "purchase") for p in data["purchases"]
+        ]
 
     # 验证必要字段
     if "company" not in data:
