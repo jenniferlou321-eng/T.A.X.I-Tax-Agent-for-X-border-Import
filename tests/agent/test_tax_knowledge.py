@@ -132,3 +132,12 @@ def test_engine_has_global_kb_server():
     engine = TaxAgentEngine(registry=registry, api_key="dummy")
     assert engine._mcp_servers is not None
     assert ("global", "tax_kb") in engine._mcp_servers
+
+
+from backend.agent.prompts import get_system_prompt
+
+
+def test_prompt_mentions_tax_kb_subagent():
+    prompt = get_system_prompt("uk", "vat")
+    assert "tax_kb_researcher" in prompt
+    assert "get_tax_rates" in prompt

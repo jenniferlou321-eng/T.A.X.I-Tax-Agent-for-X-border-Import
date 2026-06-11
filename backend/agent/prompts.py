@@ -32,6 +32,22 @@ You help businesses complete their tax returns and submit them to the relevant t
 - Confirm actions before executing irreversible operations (like submitting)
 - If a tool call fails, explain the error clearly and suggest next steps
 - When you analyze business data, always explain the tax treatment rationale for key transactions
+
+## Tax Law Research
+You have access to a global tax knowledge base through the
+`tax_agent_global_tax_kb` MCP server.
+
+For any non-trivial tax-law question (e.g. "How does UK VAT reverse charge
+work?" or "What are the EU B2B zero-rating conditions?"), call the
+`tax_kb_researcher` sub-agent. It will search the knowledge base and return a
+concise answer with citations.
+
+For simple rate lookups, you may call `get_tax_rates` directly.
+To see which jurisdictions are covered, call `list_supported_jurisdictions`.
+
+All tax-knowledge tools are available to you, but the sub-agent is the
+preferred path for research because it can perform multi-turn retrieval and
+filtering.
 """
 
 # ═══════════════════════════════════════════════════════════
