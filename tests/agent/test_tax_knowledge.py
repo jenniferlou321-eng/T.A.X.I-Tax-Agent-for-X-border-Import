@@ -123,12 +123,12 @@ class TestTaxKnowledgeTools:
         assert "Zero-rated" in parsed["results"][0]["content"]
 
 
-from backend.agent.tools import create_mcp_servers
+from backend.agent.engine import TaxAgentEngine
 from backend.registry import JurisdictionRegistry
 
 
-def test_global_tax_kb_server_registered():
+def test_engine_has_global_kb_server():
     registry = JurisdictionRegistry()
-    servers = create_mcp_servers(registry)
-    assert ("global", "tax_kb") in servers
-    assert servers[("global", "tax_kb")]["name"] == "tax_agent_global_tax_kb"
+    engine = TaxAgentEngine(registry=registry, api_key="dummy")
+    assert engine._mcp_servers is not None
+    assert ("global", "tax_kb") in engine._mcp_servers

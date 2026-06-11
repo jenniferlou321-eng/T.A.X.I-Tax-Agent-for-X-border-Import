@@ -365,6 +365,23 @@ class TaxAgentEngine:
             if mcp_info:
                 options_kwargs["mcp_servers"] = {mcp_info["name"]: mcp_info["instance"]}
 
+            # 附加全局税法知识 MCP Server（对所有管辖地都可用）
+            kb_info = self._mcp_servers.get(("global", "tax_kb"))
+            if kb_info:
+                options_kwargs.setdefault("mcp_servers", {})[kb_info["name"]] = kb_info["instance"]
+
+            # 注册税法调研 sub-agent
+            from backend.agent.tax_knowledge_prompts import TAX_KB_SUBAGENT_PROMPT
+            from claude_agent_sdk.types import AgentDefinition
+            options_kwargs["agents"] = {
+                "tax_kb_researcher": AgentDefinition(
+                    description="Tax law research sub-agent",
+                    prompt=TAX_KB_SUBAGENT_PROMPT,
+                    tools=["mcp__tax_agent_global_tax_kb__search_tax_knowledge"],
+                    maxTurns=3,
+                )
+            }
+
             # 把 CLI 子进程的 stderr 透到后端日志，便于诊断挂起/认证问题
             import sys as _sys
             options_kwargs["stderr"] = lambda line: _sys.stderr.write(
