@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   CheckIcon,
@@ -99,7 +99,11 @@ function JurisdictionSelector({
 }) {
   const [country, setCountry] = useState('uk')
   const [taxType, setTaxType] = useState('vat')
-  const [vrn, setVrn] = useState(initialVrn)
+  // VRN 优先从用户档案读取；档案未填则回退到第一个 demo Case 的 VRN
+  // （让用户无需手动输入即可继续演示流程）。来源是只读的——
+  // 真实场景下 VRN 来自企业设置或个人档案，不是新建申报这一步的临时输入。
+  const fallbackVrn = casePresets.find((p) => p.taxpayer?.tax_id)?.taxpayer.tax_id ?? ''
+  const vrn = initialVrn || fallbackVrn
 
   return (
     <div className="max-w-lg mx-auto space-y-6 fade-in">
@@ -142,21 +146,27 @@ function JurisdictionSelector({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-fg mb-2">
+          <label className="block text-sm font-medium text-fg mb-2 flex items-center gap-2">
             VAT 注册号 (VRN)
+            <span className="text-[10px] font-medium text-accent bg-accent-muted px-1.5 py-0.5 rounded">
+              已从纳税人档案读取
+            </span>
           </label>
           <div className="relative">
             <IdentificationIcon className="w-4 h-4 text-fg-dim absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={vrn}
-              onChange={(e) => setVrn(e.target.value)}
-              placeholder="例如: 123456789"
-              className="input pl-10"
+              readOnly
+              aria-readonly="true"
+              placeholder="请先在「设置 → 纳税人信息」中配置 VRN"
+              className="input pl-10 bg-bg-elevated/50 cursor-not-allowed"
             />
           </div>
           <p className="text-xs text-fg-dim mt-1.5">
-            您的 VAT Registration Number，用于从 HMRC 获取申报义务
+            如需修改 VRN，请前往
+            <Link to="/settings" className="text-primary hover:underline mx-1">设置 → 纳税人信息</Link>
+            调整纳税人档案。
           </p>
         </div>
 
@@ -561,7 +571,11 @@ function NewFilingPage() {
   const [step, setStep] = useState(1)
   const [country, setCountry] = useState('')
   const [taxType, setTaxType] = useState('')
-  const [vrn, setVrn] = useState('')
+  // VRN 默认值：纳税人档案 → demo Case → 空。
+  // 用户在 Step 1 不再需要手填。
+  const [vrn, setVrn] = useState(
+    profileVrn || casePresets.find((p) => p.taxpayer?.tax_id)?.taxpayer.tax_id || ''
+  )
   const [selectedObligation, setSelectedObligation] = useState<VATObligation | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [calculation, setCalculation] = useState<CalculationResult | null>(null)

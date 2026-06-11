@@ -14,7 +14,15 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPExcept
 from fastapi.responses import StreamingResponse
 
 from backend.agent import TaxAgentEngine
+from backend.agent.agui_adapter import stream_agui_events
 from backend.agent.session_store import list_sessions, get_session_messages, delete_session
+
+# AG-UI 协议标准请求体类型（threadId/runId/messages/state/...）。
+# 当 `ag-ui-protocol` 不可用时降级为 Any — 这样 dev 环境也能 import。
+try:
+    from ag_ui.core import RunAgentInput
+except Exception:  # pragma: no cover — 极少见，依赖未装
+    RunAgentInput = None  # type: ignore[assignment]
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -35,21 +43,29 @@ def get_engine() -> TaxAgentEngine:
     return _engine
 
 
-# ── HTTP SSE 聊天接口 ──
+# ── HTTP SSE 聊天接口 (AG-UI 兼容) ──
 
 @router.post("/chat")
 async def agent_chat(
     session_id: Optional[str] = Query(None),
     message: str = Query(...),
     raw_data: Optional[str] = Query(None),
+    thread_id: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None),
 ):
-    """HTTP SSE 流式聊天接口
+    """HTTP SSE 流式聊天接口 (AG-UI 兼容)
 
-    适合前端使用 EventSource 接收流式响应。
-    支持通过 raw_data 参数传递原始企业 JSON 数据。
+    保留 query string 入口（dashboard / loadSampleData 路径）以避免破坏
+    前端现有调用。**输出**遵循 AG-UI 事件协议：data: {type:..., ...}\\n\\n
+    事件序列 (RUN_STARTED → TEXT_MESSAGE_* → RUN_FINISHED 等)，不再
+    是旧的 {chunk, session_id, done} 格式。
+
+    如需走标准 AG-UI 请求体，使用 POST /api/agent/agui 端点。
     """
     engine = get_engine()
     sid = session_id or str(uuid.uuid4())
+    tid = thread_id or sid   # AG-UI thread_id 与 session_id 双向映射
+    rid = run_id or str(uuid.uuid4())
 
     # 解析原始业务数据
     raw_business_data = None
@@ -60,11 +76,63 @@ async def agent_chat(
             pass
 
     async def event_stream():
-        async for chunk in engine.chat(sid, message, raw_business_data=raw_business_data):
-            # SSE 格式: data: {...}\n\n
-            payload = json.dumps({"chunk": chunk, "session_id": sid})
-            yield f"data: {payload}\n\n"
-        yield f"data: {json.dumps({'done': True, 'session_id': sid})}\n\n"
+        async for sse in stream_agui_events(
+            thread_id=tid,
+            run_id=rid,
+            engine=engine,
+            session=engine._get_or_create_session(sid),
+            user_message=message,
+            raw_business_data=raw_business_data,
+        ):
+            yield sse
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+    )
+
+
+# ── 标准 AG-UI 协议端点 ──
+
+@router.post("/agui")
+async def agent_agui(input_data: "RunAgentInput"):
+    """标准 AG-UI 协议端点 — body 为 RunAgentInput
+    (threadId/runId/messages/state/tools/context/forwardedProps)。
+
+    客户端应:
+      POST /api/agent/agui
+      Content-Type: application/json
+      Accept: text/event-stream
+      Body: {"threadId":"...","runId":"...","messages":[{...}]}
+
+    响应: text/event-stream + AG-UI 事件序列 (RUN_STARTED → ... → RUN_FINISHED)。
+    """
+    if RunAgentInput is None:
+        raise HTTPException(
+            status_code=503,
+            detail="ag-ui-protocol package not installed. pip install ag-ui-protocol",
+        )
+    engine = get_engine()
+    sid = input_data.thread_id
+
+    # 把 AG-UI 的 messages 列表拍平成一条 user_message
+    # （T.A.X.I. engine.chat 当前只接单条 user 消息；多轮历史由
+    # session 内部维护，无需前端重复传）
+    user_message = ""
+    for m in reversed(input_data.messages or []):
+        if m.role == "user" and m.content:
+            user_message = m.content
+            break
+
+    async def event_stream():
+        async for sse in stream_agui_events(
+            thread_id=input_data.thread_id,
+            run_id=input_data.run_id,
+            engine=engine,
+            session=engine._get_or_create_session(sid),
+            user_message=user_message,
+        ):
+            yield sse
 
     return StreamingResponse(
         event_stream(),
