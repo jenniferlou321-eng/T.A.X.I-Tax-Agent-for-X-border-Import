@@ -1,3 +1,8 @@
+/* 语法高亮主题：github-dark 配合默认暗色主题。
+   @import 必须放在所有 @tailwind/@layer 之前，否则 Vite / PostCSS 会
+   报 "@import must precede all other statements" 警告。 */
+@import "highlight.js/styles/github-dark.css";
+
 /* T.A.X.I. design system — Tailwind v3 syntax.
  *
  * We use Tailwind v3 (not v4) because v4 needs Node 20+ and the build host

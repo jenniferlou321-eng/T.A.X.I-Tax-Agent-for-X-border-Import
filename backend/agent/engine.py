@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import uuid
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Optional
 
@@ -29,6 +30,7 @@ if SDK_AVAILABLE:
         ClaudeAgentOptions,
         AssistantMessage,
         TextBlock,
+        ThinkingBlock,
         ToolUseBlock,
         ToolResultBlock,
         ResultMessage,
@@ -41,6 +43,7 @@ else:
 
     AssistantMessage = _MsgBase
     TextBlock = _MsgBase
+    ThinkingBlock = _MsgBase
     ToolUseBlock = _MsgBase
     ToolResultBlock = _MsgBase
     ResultMessage = _MsgBase
@@ -322,6 +325,17 @@ class TaxAgentEngine:
                 "cwd": self.cwd,
                 # 不加载 user/project settings，避免首次运行 onboarding/trust 阻塞
                 "setting_sources": [],
+                # AG-UI 协议需要 token-level streaming：开启后 CLI 在
+                # 每个 content_block_delta 上 emit StreamEvent 帧，
+                # 我们在 receive_response() 里识别它们并 yield 纯文本。
+                # 注意：启用后 SDK 仍会再 emit 一次完整的 AssistantMessage，
+                # 下面的循环用 `stream_active` 标志跳过那段以避免重复。
+                "include_partial_messages": True,
+                # 启用 extended thinking：display="summarized" 让 CLI 子进程
+                # 流式输出 thinking 文本（而非仅 emit 签名），前端可在折叠面板
+                # 中展示模型的推理过程。"adaptive" 允许模型自行决定深度；
+                # 不思考的模型把它当 no-op，所以无条件启用。
+                "thinking": {"type": "adaptive", "display": "summarized"},
                 # 显式转发路由 + 沙箱标志给 CLI 子进程
                 "env": {
                     k: v
@@ -367,28 +381,98 @@ class TaxAgentEngine:
         try:
             await client.query(user_message, session_id=session.session_id)
 
+            # AG-UI 协议关键：include_partial_messages=True 时，CLI 在每个
+            # content_block_delta 上 emit StreamEvent(delta)；之后还会 emit
+            # 一次完整的 AssistantMessage(TextBlock)。我们用 `stream_active`
+            # 标记本轮是否已经从 delta 路径 yield 过 — 若是，整段 TextBlock
+            # 跳过（避免用户先逐字看到再整段重发一遍）。
+            stream_active = False
+
             async for msg in client.receive_response():
-                if isinstance(msg, AssistantMessage):
+                if isinstance(msg, StreamEvent):
+                    event = msg.event or {}
+                    etype = event.get("type")
+                    if etype == "content_block_start":
+                        data = event.get("data") or {}
+                        # Anthropic text / thinking block 开始 → 后续会走 delta 路径
+                        if isinstance(data, dict) and data.get("type") in ("text", "thinking"):
+                            stream_active = True
+                    elif etype == "content_block_delta":
+                        delta = event.get("delta") or {}
+                        if delta.get("type") == "text_delta":
+                            text = delta.get("text", "")
+                            if text:
+                                stream_active = True
+                                yield text
+                        elif delta.get("type") == "thinking_delta":
+                            # 扩展思考：把每个 token 累加成 reasoning_content 流式信号，
+                            # 由 AG-UI 适配器编码为 REASONING_MESSAGE_CONTENT 事件。
+                            # signature_delta（thinking 收尾时附带）忽略。
+                            text = delta.get("thinking", "")
+                            if text:
+                                stream_active = True
+                                yield {"__agui__": "reasoning_content", "delta": text}
+                    # 其它 StreamEvent 形态（ping / content_block_stop 等）忽略
+
+                elif isinstance(msg, AssistantMessage):
                     for block in msg.content:
                         if isinstance(block, TextBlock):
+                            if stream_active:
+                                # 这一轮已经从 delta 流出过，跳过整段
+                                continue
                             yield block.text
+                        elif isinstance(block, ThinkingBlock):
+                            # 非流式 replay / 旧 CLI 不发 thinking_delta 的回退路径。
+                            # stream_active=True 时整段跳过，避免与上面的 delta 流重复；
+                            # 没有 thinking 文本的 block 也直接跳过。
+                            if stream_active or not getattr(block, "thinking", None):
+                                continue
+                            yield {"__agui__": "reasoning_start"}
+                            yield {"__agui__": "reasoning_content", "delta": block.thinking}
+                            yield {"__agui__": "reasoning_end"}
                         elif isinstance(block, ToolUseBlock):
-                            yield f"\n🔧 正在调用工具: {block.name}...\n"
+                            # 工具调用 → 发结构化信号给 AG-UI 适配器
+                            tool_id = (
+                                getattr(block, "id", None)
+                                or f"tool_{uuid.uuid4().hex[:8]}"
+                            )
+                            yield {
+                                "__agui__": "tool_start",
+                                "tool_call_id": tool_id,
+                                "tool_name": block.name,
+                                "parent_message_id": None,
+                            }
+                            if hasattr(block, "input") and block.input is not None:
+                                try:
+                                    args_str = json.dumps(
+                                        block.input, ensure_ascii=False
+                                    )
+                                except (TypeError, ValueError):
+                                    args_str = str(block.input)
+                                if args_str and args_str != "null":
+                                    yield {
+                                        "__agui__": "tool_args",
+                                        "tool_call_id": tool_id,
+                                        "delta": args_str,
+                                    }
+                            yield {
+                                "__agui__": "tool_end",
+                                "tool_call_id": tool_id,
+                            }
+                    stream_active = False  # 消息边界，重置
 
                 elif isinstance(msg, ToolResultBlock):
+                    tool_id = getattr(msg, "tool_use_id", None) or ""
                     try:
                         tool_result = self._parse_tool_result(msg)
-                        if tool_result.get("success"):
-                            yield "\n✅ 工具执行完成\n"
-                        else:
-                            yield f"\n⚠️ 工具执行警告: {tool_result.get('error', '未知错误')}\n"
+                        content_str = json.dumps(tool_result, ensure_ascii=False)
                     except Exception:
-                        yield "\n✅ 工具执行完成\n"
-
-                elif isinstance(msg, StreamEvent):
-                    event = msg.event or {}
-                    if event.get("type") == "text":
-                        yield event.get("text", "")
+                        content_str = "(unparseable tool result)"
+                    yield {
+                        "__agui__": "tool_result",
+                        "tool_call_id": tool_id,
+                        "content": content_str,
+                    }
 
                 elif isinstance(msg, SystemMessage):
                     if msg.subtype == "notification":
@@ -433,8 +517,10 @@ class TaxAgentEngine:
     ) -> AsyncIterator[str]:
         """直连 MiniMax /v1/messages 端点（不依赖 claude-agent-sdk）。
 
-        用于 musl 等无 SDK wheel 的环境。MiniMax 是 Anthropic 兼容 API，
-        用 x-api-key + anthropic-version: 2023-06-01 headers。
+        用于 musl 等无 SDK wheel 的环境，或 SDK 失败后的 fallback。MiniMax
+        是 Anthropic 兼容 API，支持 `stream: true` → SSE 事件流。
+        本实现走真流式（httpx_sse.aconnect_sse），逐 token yield —
+        不再像之前那样先 await 整个响应再一次性 parse。
         """
         base_url = (
             os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
@@ -453,52 +539,68 @@ class TaxAgentEngine:
         req_body = {
             "model": model_name,
             "max_tokens": 4096,
+            "stream": True,   # ← 关键：开启 Anthropic 风格 SSE 流
             "system": system_prompt,
             "messages": [
                 {"role": "user", "content": user_message},
             ],
         }
 
+        # 延迟 import：httpx_sse 是 SDK 的传递依赖，不在 requirements.txt 强约束
+        from httpx_sse import aconnect_sse
+
+        stream_active = False  # 标记本轮 text 是否已开始（用于过滤空 content_block_start）
+
         async with httpx.AsyncClient(timeout=60) as client:
             try:
-                resp = await client.post(
+                async with aconnect_sse(
+                    client,
+                    "POST",
                     url,
                     headers={
                         "content-type": "application/json",
                         "x-api-key": self.api_key,
                         "anthropic-version": "2023-06-01",
+                        "accept": "text/event-stream",
                     },
                     json=req_body,
-                )
+                ) as event_source:
+                    async for sse in event_source.aiter_sse():
+                        ev_type = sse.event
+                        if ev_type == "content_block_start":
+                            try:
+                                data = sse.json()
+                            except Exception:
+                                data = {}
+                            if isinstance(data, dict) and (data.get("data") or {}).get("type") == "text":
+                                stream_active = True
+                        elif ev_type == "content_block_delta":
+                            try:
+                                data = sse.json()
+                            except Exception:
+                                continue
+                            delta = data.get("delta") or {}
+                            if delta.get("type") == "text_delta":
+                                text = delta.get("text", "")
+                                if text:
+                                    stream_active = True
+                                    yield text
+                        elif ev_type == "content_block_stop":
+                            # block 关闭，stream_active 不重置（多 block 也行）
+                            pass
+                        elif ev_type == "message_stop":
+                            break
+                        elif ev_type == "error":
+                            try:
+                                err = sse.json()
+                            except Exception:
+                                err = {"error": {"message": sse.data}}
+                            yield f"\n❌ API 错误: {err}\n"
+                            return
+                        # 其它事件（message_start / ping 等）忽略
             except Exception as e:
                 yield f"\n❌ HTTP 错误: {type(e).__name__}: {e}\n"
                 return
-
-            if resp.status_code != 200:
-                yield f"\n❌ API 错误 {resp.status_code}: {resp.text[:300]}\n"
-                return
-
-            try:
-                data = resp.json()
-            except Exception as e:
-                yield f"\n❌ JSON 解析失败: {e}\n"
-                return
-
-            # 提取文本块
-            for block in data.get("content", []):
-                if block.get("type") == "text":
-                    yield block.get("text", "")
-
-            # 打印 usage 摘要
-            usage = data.get("usage") or {}
-            if usage:
-                yield (
-                    f"\n\n📊 usage: input={usage.get('input_tokens', 0)} "
-                    f"output={usage.get('output_tokens', 0)}"
-                    f"{' cache_creation=' + str(usage.get('cache_creation_input_tokens', 0)) if usage.get('cache_creation_input_tokens') else ''}"
-                    f"{' cache_read=' + str(usage.get('cache_read_input_tokens', 0)) if usage.get('cache_read_input_tokens') else ''}"
-                    f"\n"
-                )
 
         session.status = "idle"
 
@@ -514,6 +616,18 @@ class TaxAgentEngine:
 
         msg_lower = user_message.lower()
         jurisdiction = session.jurisdiction or "uk"
+
+        # 演示用的推理片段：让前端折叠面板在没有 API key 时也能展示
+        # 完整生命周期（auto-open → collapse）。生产环境不会跑这条路径。
+        yield {"__agui__": "reasoning_start"}
+        for piece in (
+            "用户提问: " + user_message[:40] + "\n",
+            "判断 jurisdiction: " + jurisdiction + "\n",
+            "按意图路由到对应 handler\n",
+        ):
+            yield {"__agui__": "reasoning_content", "delta": piece}
+        yield {"__agui__": "reasoning_end"}
+        await asyncio.sleep(0.2)
 
         if jurisdiction != "uk":
             yield f"我是 TaxAgent 智能报税助手。\n\n"

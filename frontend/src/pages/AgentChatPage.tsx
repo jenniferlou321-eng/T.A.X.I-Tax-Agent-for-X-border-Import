@@ -17,14 +17,19 @@ import {
   BuildingOfficeIcon,
   MagnifyingGlassIcon,
   ChartBarIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from '@heroicons/react/24/outline'
 import QuickActionButton from '../components/QuickActionButton'
 import InvoiceMultiSelectPanel from '../components/InvoiceMultiSelectPanel'
 import NineBoxDiffTable from '../components/NineBoxDiffTable'
+import ThinkingBlock from '../components/ThinkingBlock'
+import Markdown from '../components/Markdown'
 import { useDemoStore } from '../stores/demoStore'
 import { casePresets } from '../data/casePresets'
 import { api } from '../api/client'
 import type { ImportResult, ReconciliationDelta, ERPNineBox } from '../types'
+import { consumeAguiStream, type BaseEvent } from '../api/agentStream'
 
 interface ChatMessage {
   id: string
@@ -32,6 +37,21 @@ interface ChatMessage {
   content: string
   timestamp: Date
   status?: 'sending' | 'streaming' | 'done' | 'error'
+  /** 扩展思考（extended thinking）流式累积。 */
+  thinking?: string
+}
+
+/**
+ * AG-UI 工具调用卡片：渲染 TOOL_CALL_START/ARGS/END/RESULT 序列。
+ * 折叠显示 args + result（可能较大 JSON）。
+ */
+interface ToolCallCard {
+  toolCallId: string
+  toolName: string
+  args: string
+  result?: string
+  argsOpen: boolean
+  resultOpen: boolean
 }
 
 interface HistorySession {
@@ -55,32 +75,41 @@ function formatTime(iso: string) {
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+const WELCOME_MESSAGE: ChatMessage = {
+  id: 'welcome',
+  role: 'assistant',
+  content: '您好！我是 TaxAgent 智能报税助手。\n\n我可以帮您：\n• 分析原始企业发票数据并自动计算 VAT Return\n• 查询 HMRC 待申报义务\n• 验证申报数据合规性\n• 提交 VAT Return 至 HMRC\n• 查询已提交的申报\n\n请告诉我您需要什么帮助？',
+  timestamp: new Date(),
+  status: 'done',
+}
+
 export default function AgentChatPage() {
   const [searchParams] = useSearchParams()
   const initialMessage = searchParams.get('message') || ''
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: '您好！我是 TaxAgent 智能报税助手。\n\n我可以帮您：\n• 查询 HMRC 待申报义务\n• 自动计算 VAT Return（9-Box）\n• 验证申报数据合规性\n• 提交 VAT Return 至 HMRC\n• 查询已提交的申报\n\n请告诉我您需要什么帮助？',
-      timestamp: new Date(),
-      status: 'done',
-    },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string>('')
-  const [connectionMode, setConnectionMode] = useState<'sse' | 'ws'>('ws')
-  const [isConnected, setIsConnected] = useState(false)
-  const wsRef = useRef<WebSocket | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
   const [sampleData, setSampleData] = useState<Record<string, unknown> | null>(null)
   const [sampleDataLoading, setSampleDataLoading] = useState(false)
   const [showInvoicePanel, setShowInvoicePanel] = useState<{ type: 'sale' | 'purchase' } | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const [lastDiff, setLastDiff] = useState<{ erp: ERPNineBox; taxi: ERPNineBox; delta: ReconciliationDelta } | null>(null)
+  const [lastDiff, _setLastDiff] = useState<{ erp: ERPNineBox; taxi: ERPNineBox; delta: ReconciliationDelta } | null>(null)
+  // AG-UI tool call 卡片（per-run），UI 在每条 assistant 消息下方渲染
+  const [toolCalls, setToolCalls] = useState<ToolCallCard[]>([])
+  // 思考段（extended thinking）状态：
+  //   - thinkingFinishedIds: 哪些 messageId 的 REASONING_END 已经到达
+  //   - thinkingCollapsedByUser: 用户手动 toggle 的覆盖（session 内有效）
+  const [thinkingFinishedIds, setThinkingFinishedIds] = useState<Set<string>>(new Set())
+  const [thinkingCollapsedByUser, setThinkingCollapsedByUser] = useState<Record<string, boolean>>({})
+
+  // 当前活跃的 assistant 消息 id（用 ref 避免 stale closure，
+  // 不依赖 messages 数组查找）
+  const assistantIdRef = useRef<string>('')
+  // AbortController 引用，组件卸载或重置时取消正在进行的流
+  const abortRef = useRef<AbortController | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // ── Demo Case selection (from Dashboard) ──
   const selectedPreset = useDemoStore((s) => s.selectedPreset)
@@ -121,29 +150,6 @@ export default function AgentChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  // Probe the WebSocket on mount so the status dot reflects reality
-  // (otherwise the UI says "未连接" until the user sends the first message).
-  useEffect(() => {
-    if (connectionMode !== 'ws') return
-    let cancelled = false
-    const ws = new WebSocket(`${API_BASE.replace('http', 'ws')}/api/agent/ws/chat`)
-    wsRef.current = ws
-    ws.onopen = () => { if (!cancelled) setIsConnected(true) }
-    ws.onerror = () => { if (!cancelled) setIsConnected(false) }
-    ws.onclose = () => {
-      if (!cancelled) {
-        setIsConnected(false)
-        if (wsRef.current === ws) wsRef.current = null
-      }
-    }
-    return () => {
-      cancelled = true
-      ws.close()
-      if (wsRef.current === ws) wsRef.current = null
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionMode])
 
   // Handle initial message from URL
   useEffect(() => {
@@ -195,11 +201,8 @@ export default function AgentChatPage() {
         status: 'done',
       }))
       setMessages(loaded.length > 0 ? loaded : [{
-        id: 'welcome',
-        role: 'assistant',
+        ...WELCOME_MESSAGE,
         content: '对话已加载。继续输入以继续对话。',
-        timestamp: new Date(),
-        status: 'done',
       }])
       setSessionId(sid)
       setHistoryOpen(false)
@@ -222,86 +225,350 @@ export default function AgentChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
-  // ── SSE Mode ──
-  const sendViaSSE = async (message: string) => {
+  // ── AG-UI 事件流式接收：按 type 派发 ──
+  //
+  // 后端通过 SSE 推送 AG-UI 事件序列：
+  //   RUN_STARTED → TEXT_MESSAGE_START → (TEXT_MESSAGE_CONTENT)* → TEXT_MESSAGE_END
+  //                → (TOOL_CALL_START → TOOL_CALL_ARGS → TOOL_CALL_END → TOOL_CALL_RESULT)*
+  //                → RUN_FINISHED | RUN_ERROR
+  //
+  // 状态机：
+  //   - assistantIdRef 跟踪当前 active text message（首次 TEXT_MESSAGE_START 设置）
+  //   - toolCalls 数组存放 TOOL_CALL_START 起的卡片（直到 RUN_FINISHED 重置）
+  //   - sessionId 从 RUN_STARTED 的 threadId 取
+  // 多个工具调用 / 多段文本都会被正确切片（每个 TOOL_CALL_START 之前先关闭前一段 TEXT）
+
+  const ensureAssistantMessage = useCallback((initialText: string) => {
+    if (assistantIdRef.current) {
+      const id = assistantIdRef.current
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, content: m.content + initialText } : m))
+      )
+      return id
+    }
+    const id = generateId()
+    assistantIdRef.current = id
+    setMessages((prev) => [
+      ...prev,
+      {
+        id,
+        role: 'assistant',
+        content: initialText,
+        timestamp: new Date(),
+        status: 'streaming',
+      },
+    ])
+    return id
+  }, [])
+
+  const finishAssistantMessage = useCallback(() => {
+    const id = assistantIdRef.current
+    if (id) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, status: 'done' } : m))
+      )
+      assistantIdRef.current = ''
+    }
+    setIsLoading(false)
+  }, [])
+
+  const closeTextMessage = useCallback(() => {
+    const id = assistantIdRef.current
+    if (id) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, status: 'done' } : m))
+      )
+      // 不清空 ref：下一段 TEXT_MESSAGE_START 才会给新 id
+      // 实际上 adapter 每次发 START 时会用新 messageId 重新 set，
+      // 但 ref 留旧值在 closeTextMessage 后无影响。
+    }
+  }, [])
+
+  const resetRunState = useCallback(() => {
+    assistantIdRef.current = ''
+    setToolCalls([])
+    // 清掉上一轮的 thinkingFinishedIds（每轮 run 重新计算）；
+    // thinkingCollapsedByUser 保留 — 那是"用户偏好"级别的 session 记忆。
+    setThinkingFinishedIds(new Set())
+  }, [])
+
+  // AG-UI 事件派发器
+  const handleAguiEvent = useCallback(
+    (event: BaseEvent) => {
+      const t = event.type
+      switch (t) {
+        // ── 扩展思考（REASONING_*） — 早于 TEXT_MESSAGE_* 到达 ──
+        case 'REASONING_START': {
+          const mid = String(event.messageId || '')
+          if (!mid) break
+          // 思考可能在 text 之前到达：先建一个空的 assistant 占位，
+          // 后续 TEXT_MESSAGE_START 若用同 id，会复用此条。
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === mid)) return prev
+            return [
+              ...prev,
+              {
+                id: mid,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date(),
+                status: 'streaming',
+                thinking: '',
+              },
+            ]
+          })
+          scrollToBottom()
+          break
+        }
+        case 'REASONING_MESSAGE_START': {
+          // no-op — REASONING_START 已建好占位；这里只是协议必发的事件。
+          break
+        }
+        case 'REASONING_MESSAGE_CONTENT': {
+          const mid = String(event.messageId || '')
+          const delta = String(event.delta || '')
+          if (!mid || !delta) break
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === mid ? { ...m, thinking: (m.thinking || '') + delta } : m
+            )
+          )
+          scrollToBottom()
+          break
+        }
+        case 'REASONING_MESSAGE_END': {
+          // no-op — 等 REASONING_END 才把"finished"标记挂上
+          break
+        }
+        case 'REASONING_END': {
+          const mid = String(event.messageId || '')
+          if (!mid) break
+          setThinkingFinishedIds((prev) => {
+            const s = new Set(prev)
+            s.add(mid)
+            return s
+          })
+          break
+        }
+        case 'RUN_STARTED': {
+          const tid = String(event.threadId || '')
+          const rid = String(event.runId || '')
+          if (tid) setSessionId(tid)
+          // 重置本 run 的 tool call 卡片（新一轮 run 开始时清掉上一轮）
+          setToolCalls([])
+          // 用一个空 assistant 消息占位，让 user 看到"正在思考"动画
+          if (!assistantIdRef.current) {
+            const id = generateId()
+            assistantIdRef.current = id
+            setMessages((prev) => [
+              ...prev,
+              {
+                id,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date(),
+                status: 'streaming',
+              },
+            ])
+          }
+          // log 一下 run id（dev 用）
+          if (rid && typeof window !== 'undefined') {
+            // eslint-disable-next-line no-console
+            console.debug('[agui] RUN_STARTED', { threadId: tid, runId: rid })
+          }
+          scrollToBottom()
+          break
+        }
+        case 'TEXT_MESSAGE_START': {
+          const mid = String(event.messageId || '')
+          if (!mid) break
+          if (assistantIdRef.current && assistantIdRef.current !== mid) {
+            // 上一段 text 还没 END，先关掉
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantIdRef.current ? { ...m, status: 'done' } : m
+              )
+            )
+          }
+          if (!assistantIdRef.current || assistantIdRef.current !== mid) {
+            assistantIdRef.current = mid
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: mid,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date(),
+                status: 'streaming',
+              },
+            ])
+          }
+          break
+        }
+        case 'TEXT_MESSAGE_CONTENT': {
+          const mid = String(event.messageId || '')
+          const delta = String(event.delta || '')
+          if (!mid || !delta) break
+          // 若这条 message 还没建（先来 content 后来 start 的异常），补建
+          if (assistantIdRef.current !== mid) {
+            assistantIdRef.current = mid
+            setMessages((prev) => {
+              const exists = prev.some((m) => m.id === mid)
+              if (exists) return prev
+              return [
+                ...prev,
+                {
+                  id: mid,
+                  role: 'assistant',
+                  content: delta,
+                  timestamp: new Date(),
+                  status: 'streaming',
+                },
+              ]
+            })
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === mid ? { ...m, content: m.content + delta } : m))
+            )
+          }
+          scrollToBottom()
+          break
+        }
+        case 'TEXT_MESSAGE_END': {
+          const mid = String(event.messageId || '')
+          if (mid) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === mid ? { ...m, status: 'done' } : m))
+            )
+          }
+          break
+        }
+        case 'TOOL_CALL_START': {
+          const tcid = String(event.toolCallId || '')
+          const name = String(event.toolCallName || '(unnamed)')
+          if (!tcid) break
+          setToolCalls((prev) => [
+            ...prev,
+            {
+              toolCallId: tcid,
+              toolName: name,
+              args: '',
+              argsOpen: true,
+              resultOpen: false,
+            },
+          ])
+          scrollToBottom()
+          break
+        }
+        case 'TOOL_CALL_ARGS': {
+          const tcid = String(event.toolCallId || '')
+          const delta = String(event.delta || '')
+          if (!tcid) break
+          setToolCalls((prev) =>
+            prev.map((c) =>
+              c.toolCallId === tcid ? { ...c, args: c.args + delta } : c
+            )
+          )
+          break
+        }
+        case 'TOOL_CALL_END': {
+          // 工具参数收尾：args 默认折叠，让 result 突出
+          const tcid = String(event.toolCallId || '')
+          if (!tcid) break
+          setToolCalls((prev) =>
+            prev.map((c) =>
+              c.toolCallId === tcid ? { ...c, argsOpen: false } : c
+            )
+          )
+          break
+        }
+        case 'TOOL_CALL_RESULT': {
+          const tcid = String(event.toolCallId || '')
+          const content = String(event.content || '')
+          if (!tcid) break
+          setToolCalls((prev) =>
+            prev.map((c) =>
+              c.toolCallId === tcid
+                ? { ...c, result: content, resultOpen: true }
+                : c
+            )
+          )
+          scrollToBottom()
+          break
+        }
+        case 'RUN_FINISHED': {
+          // 关掉所有还 streaming 的 assistant 消息（多消息 run 的兜底）
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === 'assistant' && m.status === 'streaming'
+                ? { ...m, status: 'done' }
+                : m
+            )
+          )
+          finishAssistantMessage()
+          // tool call 卡片保留在 UI 上供用户查看；下次 RUN_STARTED 会清
+          break
+        }
+        case 'RUN_ERROR': {
+          const msg = String(event.message || 'Agent 错误')
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: 'system',
+              content: `❌ ${msg}`,
+              timestamp: new Date(),
+              status: 'error',
+            },
+          ])
+          setIsLoading(false)
+          assistantIdRef.current = ''
+          break
+        }
+        // STEP_STARTED / STEP_FINISHED / STATE_SNAPSHOT / 等暂不渲染
+        default:
+          break
+      }
+    },
+    [finishAssistantMessage, scrollToBottom]
+  )
+
+  // ── 发送普通消息（纯文本） ──
+  const handleSend = async (overrideMessage?: string) => {
+    const text = overrideMessage || input.trim()
+    if (!text || isLoading) return
+
+    if (!overrideMessage) setInput('')
+    setIsLoading(true)
+    resetRunState()  // 清掉旧 assistantIdRef + tool calls
+
+    // 取消上一次未完成的流（防止 chunk 串入新一轮消息）
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     const sid = sessionId || generateId()
     if (!sessionId) setSessionId(sid)
 
-    abortRef.current = new AbortController()
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        role: 'user',
+        content: text,
+        timestamp: new Date(),
+        status: 'done',
+      },
+    ])
 
     try {
       const response = await fetch(
-        `${API_BASE}/api/agent/chat?session_id=${sid}&message=${encodeURIComponent(message)}`,
-        {
-          method: 'POST',
-          signal: abortRef.current.signal,
-        }
+        `${API_BASE}/api/agent/chat?session_id=${sid}&message=${encodeURIComponent(text)}`,
+        { method: 'POST', signal: controller.signal }
       )
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantMessageId = ''
-
-      if (!reader) throw new Error('No response body')
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-
-              if (data.done) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId ? { ...m, status: 'done' } : m
-                  )
-                )
-                setIsLoading(false)
-                continue
-              }
-
-              const text = data.chunk || ''
-
-              if (!assistantMessageId) {
-                assistantMessageId = generateId()
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: assistantMessageId,
-                    role: 'assistant',
-                    content: text,
-                    timestamp: new Date(),
-                    status: 'streaming',
-                  },
-                ])
-              } else {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: m.content + text }
-                      : m
-                  )
-                )
-              }
-
-              scrollToBottom()
-            } catch {
-              // Ignore parse errors for incomplete chunks
-            }
-          }
-        }
-      }
+      await consumeAguiStream(response, handleAguiEvent, { signal: controller.signal })
     } catch (err) {
+      if ((err as Error).name === 'AbortError') return
       const errorMsg = err instanceof Error ? err.message : '连接失败'
       setMessages((prev) => [
         ...prev,
@@ -314,144 +581,59 @@ export default function AgentChatPage() {
         },
       ])
       setIsLoading(false)
+      resetRunState()
     }
   }
 
-  // ── WebSocket Mode ──
-  const sendViaWebSocket = (message: string) => {
+  // ── 发送带原始业务数据的消息 ──
+  const sendWithRawData = useCallback(async (message: string, data: Record<string, unknown>) => {
+    const text = message.trim()
+    if (!text || isLoading) return
+
+    setIsLoading(true)
+    resetRunState()
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     const sid = sessionId || generateId()
     if (!sessionId) setSessionId(sid)
 
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      const ws = new WebSocket(
-        `${API_BASE.replace('http', 'ws')}/api/agent/ws/chat`
-      )
-      wsRef.current = ws
-
-      let assistantMessageId = ''
-
-      ws.onopen = () => {
-        setIsConnected(true)
-        ws.send(
-          JSON.stringify({
-            session_id: sid,
-            message,
-          })
-        )
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-
-          if (data.type === 'session') {
-            setSessionId(data.session_id)
-          } else if (data.type === 'chunk') {
-            const text = data.content || ''
-
-            if (!assistantMessageId) {
-              assistantMessageId = generateId()
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: assistantMessageId,
-                  role: 'assistant',
-                  content: text,
-                  timestamp: new Date(),
-                  status: 'streaming',
-                },
-              ])
-            } else {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessageId
-                    ? { ...m, content: m.content + text }
-                    : m
-                )
-              )
-            }
-
-            scrollToBottom()
-          } else if (data.type === 'done') {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMessageId ? { ...m, status: 'done' } : m
-              )
-            )
-            setIsLoading(false)
-          } else if (data.type === 'error') {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: generateId(),
-                role: 'system',
-                content: `❌ ${data.error || '未知错误'}`,
-                timestamp: new Date(),
-                status: 'error',
-              },
-            ])
-            setIsLoading(false)
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      ws.onerror = () => {
-        setIsConnected(false)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateId(),
-            role: 'system',
-            content: '❌ WebSocket 连接失败，请检查后端服务是否运行',
-            timestamp: new Date(),
-            status: 'error',
-          },
-        ])
-        setIsLoading(false)
-      }
-
-      ws.onclose = () => {
-        setIsConnected(false)
-        wsRef.current = null
-      }
-    } else {
-      wsRef.current.send(
-        JSON.stringify({
-          session_id: sid,
-          message,
-        })
-      )
-    }
-  }
-
-  const handleSend = async (overrideMessage?: string) => {
-    const text = overrideMessage || input.trim()
-    if (!text || isLoading) return
-
-    if (!overrideMessage) setInput('')
-    setIsLoading(true)
-
-    // Add user message
-    const userMsgId = generateId()
     setMessages((prev) => [
       ...prev,
       {
-        id: userMsgId,
+        id: generateId(),
         role: 'user',
-        content: text,
+        content: text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
         timestamp: new Date(),
         status: 'done',
       },
     ])
 
-    if (connectionMode === 'sse') {
-      await sendViaSSE(text)
-    } else {
-      sendViaWebSocket(text)
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/agent/chat?session_id=${sid}&message=${encodeURIComponent(text)}&raw_data=${encodeURIComponent(JSON.stringify(data))}`,
+        { method: 'POST', signal: controller.signal }
+      )
+      await consumeAguiStream(response, handleAguiEvent, { signal: controller.signal })
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return
+      const errorMsg = err instanceof Error ? err.message : '连接失败'
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          role: 'system',
+          content: `❌ ${errorMsg}`,
+          timestamp: new Date(),
+          status: 'error',
+        },
+      ])
+      setIsLoading(false)
+      resetRunState()
     }
-  }
+  }, [sessionId, isLoading, handleAguiEvent, resetRunState])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -461,21 +643,12 @@ export default function AgentChatPage() {
   }
 
   const clearChat = () => {
-    wsRef.current?.close()
-    wsRef.current = null
     abortRef.current?.abort()
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: '您好！我是 TaxAgent 智能报税助手。\n\n我可以帮您：\n• 分析原始企业发票数据并自动计算 VAT Return\n• 查询 HMRC 待申报义务\n• 验证申报数据合规性\n• 提交 VAT Return 至 HMRC\n• 查询已提交的申报\n\n请告诉我您需要什么帮助？',
-        timestamp: new Date(),
-        status: 'done',
-      },
-    ])
+    abortRef.current = null
+    resetRunState()
+    setMessages([WELCOME_MESSAGE])
     setSessionId('')
     setIsLoading(false)
-    setIsConnected(false)
     setSampleData(null)
   }
 
@@ -515,233 +688,6 @@ export default function AgentChatPage() {
       }
     } finally {
       setSampleDataLoading(false)
-    }
-  }
-
-  // ── Send with Raw Business Data ──
-  const sendWithRawData = (message: string, data: Record<string, unknown>) => {
-    const text = message.trim()
-    if (!text || isLoading) return
-
-    setIsLoading(true)
-    const sid = sessionId || generateId()
-    if (!sessionId) setSessionId(sid)
-
-    // Add user message
-    const userMsgId = generateId()
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: userMsgId,
-        role: 'user',
-        content: text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
-        timestamp: new Date(),
-        status: 'done',
-      },
-    ])
-
-    if (connectionMode === 'sse') {
-      sendViaSSEWithData(text, data, sid)
-    } else {
-      sendViaWebSocketWithData(text, data, sid)
-    }
-  }
-
-  // ── WebSocket with Raw Data ──
-  const sendViaWebSocketWithData = (message: string, data: Record<string, unknown>, sid: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      const ws = new WebSocket(
-        `${API_BASE.replace('http', 'ws')}/api/agent/ws/chat`
-      )
-      wsRef.current = ws
-
-      let assistantMessageId = ''
-
-      ws.onopen = () => {
-        setIsConnected(true)
-        ws.send(
-          JSON.stringify({
-            session_id: sid,
-            message,
-            data,
-          })
-        )
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const wsData = JSON.parse(event.data)
-
-          if (wsData.type === 'session') {
-            setSessionId(wsData.session_id)
-          } else if (wsData.type === 'chunk') {
-            const text = wsData.content || ''
-            if (!assistantMessageId) {
-              assistantMessageId = generateId()
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: assistantMessageId,
-                  role: 'assistant',
-                  content: text,
-                  timestamp: new Date(),
-                  status: 'streaming',
-                },
-              ])
-            } else {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessageId
-                    ? { ...m, content: m.content + text }
-                    : m
-                )
-              )
-            }
-            scrollToBottom()
-          } else if (wsData.type === 'done') {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMessageId ? { ...m, status: 'done' } : m
-              )
-            )
-            setIsLoading(false)
-          } else if (wsData.type === 'error') {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: generateId(),
-                role: 'system',
-                content: `❌ ${wsData.error || '未知错误'}`,
-                timestamp: new Date(),
-                status: 'error',
-              },
-            ])
-            setIsLoading(false)
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      ws.onerror = () => {
-        setIsConnected(false)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateId(),
-            role: 'system',
-            content: '❌ WebSocket 连接失败，请检查后端服务是否运行',
-            timestamp: new Date(),
-            status: 'error',
-          },
-        ])
-        setIsLoading(false)
-      }
-
-      ws.onclose = () => {
-        setIsConnected(false)
-        wsRef.current = null
-      }
-    } else {
-      wsRef.current.send(
-        JSON.stringify({
-          session_id: sid,
-          message,
-          data,
-        })
-      )
-    }
-  }
-
-  // ── SSE with Raw Data ──
-  const sendViaSSEWithData = async (message: string, data: Record<string, unknown>, sid: string) => {
-    abortRef.current = new AbortController()
-
-    try {
-      const response = await fetch(
-        `${API_BASE}/api/agent/chat?session_id=${sid}&message=${encodeURIComponent(message)}&raw_data=${encodeURIComponent(JSON.stringify(data))}`,
-        {
-          method: 'POST',
-          signal: abortRef.current.signal,
-        }
-      )
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantMessageId = ''
-
-      if (!reader) throw new Error('No response body')
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const eventData = JSON.parse(line.slice(6))
-
-              if (eventData.done) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId ? { ...m, status: 'done' } : m
-                  )
-                )
-                setIsLoading(false)
-                continue
-              }
-
-              const text = eventData.chunk || ''
-
-              if (!assistantMessageId) {
-                assistantMessageId = generateId()
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: assistantMessageId,
-                    role: 'assistant',
-                    content: text,
-                    timestamp: new Date(),
-                    status: 'streaming',
-                  },
-                ])
-              } else {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: m.content + text }
-                      : m
-                  )
-                )
-              }
-
-              scrollToBottom()
-            } catch {
-              // Ignore parse errors for incomplete chunks
-            }
-          }
-        }
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '连接失败'
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateId(),
-          role: 'system',
-          content: `❌ ${errorMsg}`,
-          timestamp: new Date(),
-          status: 'error',
-        },
-      ])
-      setIsLoading(false)
     }
   }
 
@@ -859,49 +805,13 @@ export default function AgentChatPage() {
             <div>
               <h1 className="text-sm font-semibold text-fg">TaxAgent 智能助手</h1>
               <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    isConnected || connectionMode === 'sse'
-                      ? 'bg-success'
-                      : 'bg-fg-dim'
-                  }`}
-                />
-                <span className="text-xs text-fg-dim">
-                  {connectionMode === 'ws'
-                    ? isConnected
-                      ? 'WebSocket 已连接'
-                      : 'WebSocket 未连接'
-                    : 'SSE 模式'}
-                </span>
+                <span className="inline-block w-2 h-2 rounded-full bg-success" />
+                <span className="text-xs text-fg-dim">SSE 流式连接</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Connection mode toggle */}
-            <div className="flex items-center bg-bg-elevated rounded-md p-0.5">
-              <button
-                onClick={() => setConnectionMode('ws')}
-                className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                  connectionMode === 'ws'
-                    ? 'bg-bg-surface text-fg shadow-sm'
-                    : 'text-fg-dim hover:text-fg'
-                }`}
-              >
-                WebSocket
-              </button>
-              <button
-                onClick={() => setConnectionMode('sse')}
-                className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                  connectionMode === 'sse'
-                    ? 'bg-bg-surface text-fg shadow-sm'
-                    : 'text-fg-dim hover:text-fg'
-                }`}
-              >
-                SSE
-              </button>
-            </div>
-
             <button
               onClick={clearChat}
               className="p-2 text-fg-dim hover:text-fg hover:bg-bg-elevated rounded-md transition-colors"
@@ -979,17 +889,111 @@ export default function AgentChatPage() {
 
               {/* Content */}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${getMessageStyle(
+                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${getMessageStyle(
                   msg.role
                 )}`}
               >
-                {msg.content}
-                {msg.status === 'streaming' && (
+                {/* Assistant 消息：上方挂载折叠的思考段（如果存在）。
+                    注意：放在 bubble 内（而不是外层）— 这样 wrap 不会让
+                    thinking 与 user 的回复区隔开。 */}
+                {msg.role === 'assistant' && (msg.thinking || '').length > 0 && (
+                  <ThinkingBlock
+                    content={msg.thinking || ''}
+                    isStreaming={msg.status === 'streaming' && !thinkingFinishedIds.has(msg.id)}
+                    defaultCollapsed={thinkingFinishedIds.has(msg.id)}
+                    onUserToggle={(c) =>
+                      setThinkingCollapsedByUser((p) => ({ ...p, [msg.id]: c }))
+                    }
+                  />
+                )}
+
+                {msg.role === 'assistant' ? (
+                  msg.content ? (
+                    <Markdown content={msg.content} streaming={msg.status === 'streaming'} />
+                  ) : (
+                    <span className="text-fg-muted">…</span>
+                  )
+                ) : (
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                )}
+                {msg.status === 'streaming' && msg.content && (
                   <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse rounded-sm" />
                 )}
               </div>
             </div>
           ))}
+
+          {/* ── AG-UI tool call 卡片：本轮 run 期间的 TOOL_CALL_* 序列 ── */}
+          {toolCalls.length > 0 && (
+            <div className="space-y-2 fade-in">
+              {toolCalls.map((tc) => (
+                <div
+                  key={tc.toolCallId}
+                  className="ml-11 bg-accent-muted border border-accent/20 rounded-xl p-3 text-xs"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <WrenchIcon className="w-3.5 h-3.5 text-accent shrink-0" />
+                    <span className="font-semibold text-accent">{tc.toolName}</span>
+                    {!tc.result && (
+                      <span className="text-fg-dim animate-pulse">执行中...</span>
+                    )}
+                  </div>
+
+                  {tc.args && (
+                    <details
+                      open={tc.argsOpen}
+                      onToggle={(e) => {
+                        const open = (e.target as HTMLDetailsElement).open
+                        setToolCalls((prev) =>
+                          prev.map((c) =>
+                            c.toolCallId === tc.toolCallId ? { ...c, argsOpen: open } : c
+                          )
+                        )
+                      }}
+                      className="mb-1"
+                    >
+                      <summary className="cursor-pointer text-fg-muted hover:text-fg select-none flex items-center gap-1">
+                        {(tc.argsOpen ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        参数
+                      </summary>
+                      <pre className="mt-1.5 p-2 bg-bg-elevated/60 rounded text-[11px] font-mono text-fg overflow-x-auto whitespace-pre-wrap break-all">
+                        {(() => {
+                          // 尝试把 JSON 美化；非 JSON 也直接显示
+                          try { return JSON.stringify(JSON.parse(tc.args), null, 2) }
+                          catch { return tc.args }
+                        })()}
+                      </pre>
+                    </details>
+                  )}
+
+                  {tc.result !== undefined && (
+                    <details
+                      open={tc.resultOpen}
+                      onToggle={(e) => {
+                        const open = (e.target as HTMLDetailsElement).open
+                        setToolCalls((prev) =>
+                          prev.map((c) =>
+                            c.toolCallId === tc.toolCallId ? { ...c, resultOpen: open } : c
+                          )
+                        )
+                      }}
+                    >
+                      <summary className="cursor-pointer text-fg-muted hover:text-fg select-none flex items-center gap-1">
+                        {(tc.resultOpen ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        结果
+                      </summary>
+                      <pre className="mt-1.5 p-2 bg-bg-elevated/60 rounded text-[11px] font-mono text-fg overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
+                        {(() => {
+                          try { return JSON.stringify(JSON.parse(tc.result || ''), null, 2) }
+                          catch { return tc.result || '' }
+                        })()}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
             <div className="flex gap-3">
@@ -1040,7 +1044,13 @@ export default function AgentChatPage() {
               📋 选择发票 (dev)
             </button>
           </div>
-          <div className="flex items-end gap-2 max-w-3xl mx-auto">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleSend()
+            }}
+            className="flex items-end gap-2 max-w-3xl mx-auto"
+          >
             <div className="flex-1 relative">
               <textarea
                 value={input}
@@ -1059,7 +1069,7 @@ export default function AgentChatPage() {
               )}
             </div>
             <button
-              onClick={() => handleSend()}
+              type="submit"
               disabled={isLoading || !input.trim()}
               className="shrink-0 w-11 h-11 bg-primary text-on-primary rounded-xl flex items-center justify-center hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md active:scale-95"
             >
@@ -1069,7 +1079,7 @@ export default function AgentChatPage() {
                 <PaperAirplaneIcon className="w-5 h-5" />
               )}
             </button>
-          </div>
+          </form>
           <p className="text-center text-[11px] text-fg-dim mt-2">
             TaxAgent 使用 Claude Agent SDK 驱动 · 支持 HMRC MTD for VAT API
           </p>
