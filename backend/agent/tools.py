@@ -341,6 +341,32 @@ def create_mcp_servers(registry: JurisdictionRegistry | None = None) -> dict[tup
                     "instance": mcp_server,
                 }
 
+    # ═══════════════════════════════════════════════════════════
+    # Global tax-knowledge server (not tied to a jurisdiction)
+    # ═══════════════════════════════════════════════════════════
+    from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+
+    kb_tool_set = TaxKnowledgeAgentToolSet()
+    kb_metadata = kb_tool_set.get_tool_metadata()
+    kb_wrapped = []
+    for meta in kb_metadata:
+        try:
+            kb_wrapped.append(_make_tool_wrapper(kb_tool_set, meta["name"], meta))
+        except AttributeError as e:
+            print(f"[WARN] tax_agent_global_tax_kb: skipped {meta['name']} ({e})")
+
+    if kb_wrapped:
+        kb_server = create_sdk_mcp_server(
+            name="tax_agent_global_tax_kb",
+            version="1.0.0",
+            tools=kb_wrapped,
+        )
+        if kb_server:
+            servers[("global", "tax_kb")] = {
+                "name": "tax_agent_global_tax_kb",
+                "instance": kb_server,
+            }
+
     return servers
 
 
