@@ -1,0 +1,8 @@
+{
+  "doc_id": "PO-CN-2026-Q1",
+  "type": "purchase_order",
+  "ref": "PI-2026-IMP-001..004",
+  "total_gbp": 67500,
+  "currency": "GBP",
+  "incoterm": "FOB Shenzhen"
+}

@@ -1,0 +1,8 @@
+{
+  "doc_id": "BNK-2026-Q1-01",
+  "type": "bank_statement",
+  "ref": "all",
+  "period": "Q1 2026",
+  "opening_balance_gbp": 125000,
+  "closing_balance_gbp": 152340
+}

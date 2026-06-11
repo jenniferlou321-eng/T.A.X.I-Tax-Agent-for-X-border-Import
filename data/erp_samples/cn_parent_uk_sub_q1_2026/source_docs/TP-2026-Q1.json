@@ -1,0 +1,8 @@
+{
+  "doc_id": "TP-2026-Q1",
+  "type": "transfer_pricing_study",
+  "ref": "IG-2026-001..003",
+  "method": "TNMM",
+  "markup_pct": 8.0,
+  "study_date": "2025-12-15"
+}

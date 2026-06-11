@@ -1,0 +1,44 @@
+txn_date,txn_type,counterparty,net,vat,gross,vat_rate,tax_code
+2026-01-08,sale,"Currys PC World",12500.0,2500.0,15000.0,0.2,T1
+2026-01-12,sale,"Amazon UK Marketplace",8750.0,1750.0,10500.0,0.2,T1
+2026-01-15,sale,"John Lewis Partnership",18750.0,3750.0,22500.0,0.2,T1
+2026-01-18,sale,"Argos Ltd",15200.0,3040.0,18240.0,0.2,T1
+2026-01-22,sale,"eBay UK Seller Hub",6300.0,1260.0,7560.0,0.2,T1
+2026-01-25,sale,"Tesco Direct",22000.0,4400.0,26400.0,0.2,T1
+2026-02-03,sale,"B&Q (Kingfisher)",9500.0,1900.0,11400.0,0.2,T1
+2026-02-12,sale,"Currys PC World",7800.0,1560.0,9360.0,0.2,T1
+2026-02-22,sale,"Wickes (Travis Perkins)",4400.0,880.0,5280.0,0.2,T1
+2026-03-18,sale,"Selfridges & Co",11250.0,2250.0,13500.0,0.2,T1
+2026-01-29,sale,"Holland & Barrett",4800.0,0.0,4800.0,0.0,T0
+2026-02-18,sale,"Waterstones Booksellers",3200.0,0.0,3200.0,0.0,T0
+2026-03-05,sale,"M&S Food",5600.0,0.0,5600.0,0.0,T0
+2026-03-24,sale,"Mothercare UK",2400.0,0.0,2400.0,0.0,T0
+2026-02-08,sale,"TechDealer GmbH (DE)",12500.0,0.0,12500.0,0.0,T9
+2026-02-26,sale,"ElectroPart SAS (FR)",7400.0,0.0,7400.0,0.0,T9
+2026-03-02,sale,"Nordic Tech ApS (DK)",5100.0,0.0,5100.0,0.0,T9
+2026-03-12,sale,"TechDealer GmbH (DE)",9800.0,0.0,9800.0,0.0,T9
+2026-03-20,sale,"ElectroPart SAS (FR)",6300.0,0.0,6300.0,0.0,T9
+2026-01-05,sale,"Shenzhen ZK Smart Mfg (parent, CN→UK)",45000.0,0.0,45000.0,0.0,T9
+2026-02-15,sale,"Shenzhen ZK Smart Mfg (parent, CN→UK)",32000.0,0.0,32000.0,0.0,T9
+2026-02-14,sale,"Pacific Trading Inc (USA)",18500.0,0.0,18500.0,0.0,T0
+2026-03-04,sale,"Aussie Distributors Pty (AU)",9800.0,0.0,9800.0,0.0,T0
+2026-01-10,purchase,"Office Supplies Co Ltd",850.0,170.0,1020.0,0.2,T1
+2026-01-14,purchase,"British Telecom",1200.0,240.0,1440.0,0.2,T1
+2026-01-20,purchase,"Thames Water",480.0,96.0,576.0,0.2,T1
+2026-01-28,purchase,"EDF Energy",1750.0,350.0,2100.0,0.2,T1
+2026-02-05,purchase,"DHL Parcel UK",620.0,124.0,744.0,0.2,T1
+2026-02-12,purchase,"Staples UK",1450.0,290.0,1740.0,0.2,T1
+2026-02-28,purchase,"SSE Energy",2100.0,420.0,2520.0,0.2,T1
+2026-03-15,purchase,"Vodafone UK Business",980.0,196.0,1176.0,0.2,T1
+2026-01-22,purchase,"Bremen Steel GmbH (DE)",8000.0,1600.0,9600.0,0.2,T2
+2026-02-18,purchase,"Milano Components SpA (IT)",4500.0,900.0,5400.0,0.2,T2
+2026-03-08,purchase,"Lyon Logistics SAS (FR)",3200.0,640.0,3840.0,0.2,T2
+2026-01-18,purchase,"Shenzhen ZK Smart Mfg (parent, CN→UK)",22000.0,4400.0,26400.0,0.2,T8
+2026-02-08,purchase,"Shenzhen ZK Smart Mfg (parent, CN→UK)",15000.0,3000.0,18000.0,0.2,T8
+2026-02-25,purchase,"Shenzhen ZK Smart Mfg (parent, CN→UK)",18000.0,3600.0,21600.0,0.2,T8
+2026-03-12,purchase,"Shenzhen ZK Smart Mfg (parent, CN→UK)",12500.0,2500.0,15000.0,0.2,T8
+2026-01-31,purchase,"HSBC Bank plc",350.0,0.0,350.0,0.0,T0
+2026-02-28,purchase,"Aviva Insurance UK",1200.0,0.0,1200.0,0.0,T0
+2026-02-14,purchase,"The Ritz Hotel London",2500.0,500.0,3000.0,0.2,T0
+2026-03-10,purchase,"Fortnum & Mason (entertainment)",1200.0,240.0,1440.0,0.2,T0
+2026-02-20,purchase,"Mercedes-Benz Retail UK Ltd",32000.0,6400.0,38400.0,0.2,T1

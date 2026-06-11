@@ -1,0 +1,9 @@
+{
+  "doc_id": "INV-CN-2026-001",
+  "type": "commercial_invoice",
+  "ref": "PI-2026-IMP-001",
+  "issuer": "Shenzhen ZK Smart Mfg",
+  "issued": "2026-01-10",
+  "amount_gbp": 26400,
+  "customs_ref": "C79-2026-001"
+}

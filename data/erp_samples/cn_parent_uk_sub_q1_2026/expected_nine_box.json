@@ -1,0 +1,16 @@
+{
+  "box1_vat_due_sales": "23290.00",
+  "box2_vat_due_acquisitions": "3140.00",
+  "box3_total_vat_due": "26430.00",
+  "box4_vat_reclaimed": "24926.00",
+  "box5_net_vat_due": "1504.00",
+  "box6_total_sales_ex_vat": 160750,
+  "box7_total_purchases_ex_vat": 129880,
+  "box8_total_goods_supplied_eu": 118100,
+  "box9_total_goods_acquired_eu": 15700,
+  "scheme_flags": [
+    "Capital Goods Scheme (PI-2026-CAP-001, van > \u00a350k threshold - 5yr adjustment)",
+    "Reverse Charge on intra-group B2B services (IG-2026-* - not in 9-Box, EC Sales List disclosure required)",
+    "C79 import VAT (PI-2026-IMP-001..004) - Box 4 reclaim subject to >\u00a31k/month rule"
+  ]
+}

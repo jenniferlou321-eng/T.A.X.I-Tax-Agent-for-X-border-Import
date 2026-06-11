@@ -1,0 +1,48 @@
+{
+  "case_id": "cn_parent_uk_sub_q1_2026",
+  "title": "中资跨境 VAT Q1 2026 — Shenzhen ZK Smart Mfg 母公司 → TechFlow UK Ltd 子公司",
+  "company": "TechFlow UK Ltd",
+  "vrn": "GB123456789",
+  "period": "Q1 2026",
+  "period_key": "26A1",
+  "filing_deadline": "2026-05-07",
+  "counts": {
+    "sales_invoices": 24,
+    "purchase_invoices": 20,
+    "expense_claims": 5,
+    "intra_group_transactions": 3,
+    "source_documents": 12
+  },
+  "scenarios_covered": [
+    "T1 domestic standard 20% (B2B + B2C)",
+    "T0 zero-rated (food/books/children clothing)",
+    "T9 EU B2B reverse charge (DE/FR/DK)",
+    "Intra-group transfer (parent CN→UK sub)",
+    "Export outside scope (USA/AU)",
+    "T2 EU acquisition reverse charge (DE/IT/FR)",
+    "T8 import from third country (CN→UK) with C79 reclaim",
+    "T0 exempt purchases (bank fees, insurance) - non-recoverable",
+    "T0 non-recoverable (entertainment)",
+    "T1 capital goods scheme (van > £50k threshold)",
+    "Credit note (sales return)",
+    "Transfer pricing (management fee, royalty) - disclosure"
+  ],
+  "expected_nine_box": {
+    "box1_vat_due_sales": "23290.00",
+    "box2_vat_due_acquisitions": "3140.00",
+    "box3_total_vat_due": "26430.00",
+    "box4_vat_reclaimed": "24926.00",
+    "box5_net_vat_due": "1504.00",
+    "box6_total_sales_ex_vat": 278850,
+    "box7_total_purchases_ex_vat": 129880,
+    "box8_total_goods_supplied_eu": 118100,
+    "box9_total_goods_acquired_eu": 15700
+  },
+  "expected_files": [
+    "transactions.json (raw business data for business_analyzer)",
+    "ledger.csv (CSV parser input)",
+    "erp_import.json (ImportResult with ERP-provided 9-Box + small discrepancy)",
+    "expected_nine_box.json (T.A.X.I. computed 9-Box)",
+    "source_docs/*.json (12 source documents)"
+  ]
+}
