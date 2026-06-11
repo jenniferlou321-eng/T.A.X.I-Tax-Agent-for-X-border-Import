@@ -565,7 +565,7 @@ function DeclarationPanel({
 function NewFilingPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const selectedPreset = useDemoStore((s) => s.selectedPreset)
+  const buffer = useDemoStore((s) => s.buffer)
   const profileVrn = useUserProfile((s) => s.taxpayer.vrn)
 
   const [step, setStep] = useState(1)
@@ -583,27 +583,19 @@ function NewFilingPage() {
   const [filingResult, setFilingResult] = useState<FilingResult | null>(null)
   const [prefilledValues, setPrefilledValues] = useState<Record<string, string> | undefined>(undefined)
 
-  // Preset prefill effect
+  // Buffer prefill effect: 从 working buffer 预填 9-Box 数值(若从 Preview 页跳转)
   useEffect(() => {
-    const presetId = (location.state as { presetId?: string } | null)?.presetId || selectedPreset
-    if (presetId) {
-      const preset = casePresets.find((p) => p.id === presetId)
-      if (preset) {
-        // Pre-fill lineItems into values map for DataEntryForm
-        const values: Record<string, string> = {}
-        preset.lineItems.forEach((item) => {
-          values[item.category] = String(item.amount)
-        })
-        setPrefilledValues(values)
-        // Pre-fill taxpayer info into VRN if applicable
-        if (preset.taxpayer.tax_id) {
-          setVrn(preset.taxpayer.tax_id)
-        }
-        // Clear preset state to avoid re-applying
-        useDemoStore.getState().setSelectedPreset(null)
+    if (!prefilledValues && buffer) {
+      const values: Record<string, string> = {}
+      Object.entries(buffer.nineBox).forEach(([key, amount]) => {
+        values[key] = String(amount)
+      })
+      setPrefilledValues(values)
+      if (buffer.preset.taxpayer.tax_id) {
+        setVrn(buffer.preset.taxpayer.tax_id)
       }
     }
-  }, [location.state, selectedPreset])
+  }, [buffer, prefilledValues])
 
   const { data: template, isLoading: templateLoading } = useQuery({
     queryKey: ['template', country, taxType],

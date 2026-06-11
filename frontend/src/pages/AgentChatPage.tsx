@@ -75,19 +75,40 @@ function formatTime(iso: string) {
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-const WELCOME_MESSAGE: ChatMessage = {
-  id: 'welcome',
-  role: 'assistant',
-  content: '您好！我是 TaxAgent 智能报税助手。\n\n我可以帮您：\n• 分析原始企业发票数据并自动计算 VAT Return\n• 查询 HMRC 待申报义务\n• 验证申报数据合规性\n• 提交 VAT Return 至 HMRC\n• 查询已提交的申报\n\n请告诉我您需要什么帮助？',
-  timestamp: new Date(),
-  status: 'done',
+function buildWelcomeMessage(caseTitle?: string): ChatMessage {
+  let content =
+    '您好！我是 TaxAgent 智能报税助手。\n\n' +
+    '我可以帮您：\n' +
+    '• 分析原始企业发票数据并自动计算 VAT Return\n' +
+    '• 查询 HMRC 待申报义务\n' +
+    '• 验证申报数据合规性\n' +
+    '• 提交 VAT Return 至 HMRC\n' +
+    '• 查询已提交的申报'
+  if (caseTitle) {
+    content +=
+      `\n\n当前已加载 Case: "${caseTitle}"。` +
+      '已为您准备好 ERP 数据,直接说"帮我算税"或"提交申报"即可。'
+  }
+  content += '\n\n请告诉我您需要什么帮助？'
+  return {
+    id: 'welcome',
+    role: 'assistant',
+    content,
+    timestamp: new Date(),
+    status: 'done',
+  }
 }
 
 export default function AgentChatPage() {
   const [searchParams] = useSearchParams()
   const initialMessage = searchParams.get('message') || ''
 
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE])
+  const buffer = useDemoStore((s) => s.buffer)
+  const currentCase = buffer?.preset ?? null
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    buildWelcomeMessage(currentCase?.title),
+  ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string>('')
@@ -111,11 +132,8 @@ export default function AgentChatPage() {
   const abortRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // ── Demo Case selection (from Dashboard) ──
-  const selectedPreset = useDemoStore((s) => s.selectedPreset)
-  const currentCase = selectedPreset
-    ? casePresets.find((p) => p.id === selectedPreset)
-    : null
+  // ── Demo Case selection (from Dashboard / Preview) ──
+  // buffer 已在组件顶部读取；currentCase = buffer?.preset
 
   const handleAnalyzeData = () => {
     if (!currentCase) {
@@ -179,14 +197,19 @@ export default function AgentChatPage() {
     }
   }, [historyOpen, loadHistory])
 
-  // ── Load Case Data when a preset is selected ──
+  // ── Load Case Data when buffer has a case but no ERP data yet ──
   useEffect(() => {
-    if (selectedPreset && !importResult) {
-      api.erp.getCase(selectedPreset)
+    if (buffer?.presetId && !importResult) {
+      // 优先用 buffer 里已缓存的 erpData
+      if (buffer.erpData) {
+        setImportResult(buffer.erpData)
+        return
+      }
+      api.erp.getCase(buffer.presetId)
         .then(setImportResult)
         .catch((err) => console.error('Failed to load case:', err))
     }
-  }, [selectedPreset, importResult])
+  }, [buffer, importResult])
 
   // ── Load Session Messages ──
   const loadSession = async (sid: string) => {
@@ -646,7 +669,7 @@ export default function AgentChatPage() {
     abortRef.current?.abort()
     abortRef.current = null
     resetRunState()
-    setMessages([WELCOME_MESSAGE])
+    setMessages([buildWelcomeMessage(currentCase?.title)])
     setSessionId('')
     setIsLoading(false)
     setSampleData(null)

@@ -99,18 +99,18 @@ function EmptyState() {
 
 function DashboardPage() {
   const navigate = useNavigate()
-  const setSelectedPreset = useDemoStore((s) => s.setSelectedPreset)
-  const selectedPreset = useDemoStore((s) => s.selectedPreset)
+  const loadCase = useDemoStore((s) => s.loadCase)
+  const buffer = useDemoStore((s) => s.buffer)
+  const selectedPreset = useDemoStore((s) => s.selectedPreset)  // PR 5 才删
 
   const handleLoadCase = (preset: CasePreset) => {
-    setSelectedPreset(preset.id)
-    navigate('/filings/new', { state: { presetId: preset.id } })
+    loadCase(preset)
+    navigate('/cases/' + preset.id)
   }
 
   const handleSwitchCase = (preset: CasePreset) => {
     if (window.confirm(`切换到 "${preset.title}"？当前数据将被清空。`)) {
-      setSelectedPreset(null)
-      handleLoadCase(preset)
+      loadCase(preset)
     }
   }
 
@@ -140,16 +140,16 @@ function DashboardPage() {
         <ClearDataButton />
       </div>
 
-      {selectedPreset && (
+      {buffer?.presetId && (
         <div className="card p-4 flex items-center justify-between fade-in">
           <p className="text-sm text-fg-muted">
             已加载 Case: <span className="font-medium text-fg">
-              {casePresets.find(p => p.id === selectedPreset)?.title}
+              {casePresets.find(p => p.id === buffer.presetId)?.title}
             </span>
           </p>
           <button
             onClick={() => {
-              const cur = casePresets.find(p => p.id === selectedPreset)
+              const cur = casePresets.find(p => p.id === buffer.presetId)
               if (cur) handleSwitchCase(cur)
             }}
             className="btn btn-sm btn-ghost"
@@ -167,8 +167,8 @@ function DashboardPage() {
             <CasePresetCard
               key={preset.id}
               preset={preset}
-              onLoad={preset.id === selectedPreset ? handleSwitchCase : handleLoadCase}
-              isSelected={preset.id === selectedPreset}
+              onLoad={preset.id === buffer?.presetId ? handleSwitchCase : handleLoadCase}
+              isSelected={preset.id === buffer?.presetId}
             />
           ))}
         </div>

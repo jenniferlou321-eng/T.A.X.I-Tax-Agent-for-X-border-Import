@@ -7,6 +7,7 @@ import NewFilingPage from './pages/NewFilingPage'
 import FilingDetailPage from './pages/FilingDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import AgentChatPage from './pages/AgentChatPage'
+import CasePreviewPage from './pages/CasePreviewPage'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/jurisdictions" element={<JurisdictionListPage />} />
+        <Route path="/cases/:presetId" element={<CasePreviewPage />} />
         <Route path="/filings/new" element={<NewFilingPage />} />
         <Route path="/filings/:id" element={<FilingDetailPage />} />
         <Route path="/agent" element={<AgentChatPage />} />
