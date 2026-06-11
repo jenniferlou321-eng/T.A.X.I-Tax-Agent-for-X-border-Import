@@ -4,7 +4,12 @@ import json
 import pytest
 
 from backend.agent.tax_knowledge_store import TaxKnowledgeStore, KnowledgeSection
-from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+from backend.agent.tax_knowledge_prompts import TAX_KB_SUBAGENT_PROMPT
+
+
+def test_subagent_prompt_exists():
+    assert "tax_kb_researcher" in TAX_KB_SUBAGENT_PROMPT
+    assert "search_tax_knowledge" in TAX_KB_SUBAGENT_PROMPT
 
 
 class TestTaxKnowledgeStore:
