@@ -94,9 +94,13 @@ async def preview_filing(req: FilingRequest, request: Request):
 
     return {
         "calculation": {
-            "total_tax_due": str(calc.total_tax_due),
+            # Cast Decimal → float so the frontend can call `.toFixed(2)` on
+            # the JSON value (str would throw TypeError → render crash → white
+            # screen on Step 4).  Two-decimal display is the only consumer;
+            # float precision is sufficient.
+            "total_tax_due": float(calc.total_tax_due),
             "breakdown": [
-                {"category": b.category, "amount": str(b.amount)}
+                {"category": b.category, "amount": float(b.amount)}
                 for b in calc.breakdown
             ],
             "warnings": calc.warnings,

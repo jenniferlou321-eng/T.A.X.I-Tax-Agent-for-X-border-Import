@@ -47,7 +47,12 @@ def compute_taxi_nine_box(
         Decimal("0"),
     )
     box5 = abs(box3 - box4)
-    box6 = int(sum((t.net_amount for t in sales), Decimal("0")))
+    # Box 6 = total sales excluding EU B2B (HMRC 9-Box: EU B2B 销售额
+    # 单独在 Box 8 报告，不进 Box 6)。修复前 bug: Box 6 算所有 sales，
+    # 与 Box 8 叠加后把 T9 销售算了两次。
+    box6 = int(sum(
+        (t.net_amount for t in sales if not t.is_eu), Decimal("0")
+    ))
     box7 = int(sum((t.net_amount for t in purchases), Decimal("0")))
     box8 = int(sum((t.net_amount for t in sales if t.is_eu), Decimal("0")))
     box9 = int(sum(

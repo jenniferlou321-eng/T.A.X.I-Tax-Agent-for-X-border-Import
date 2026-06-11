@@ -62,3 +62,9 @@ class ImportResult(BaseModel):
     source_hash: str
     warnings: List[str] = Field(default_factory=list)
     rejected_rows: List[Dict[str, Any]] = Field(default_factory=list)
+    # 原始 case metadata（company / period / intra_group_transactions /
+    # source_documents 等）。保存下来供后续分析工具（如
+    # business_analyzer.analyze_business_data 需要 top-level `company`）
+    # 使用。Optional 是为了不破坏没有 metadata 字段的旧 case（CSV 解析
+    # 路径不会塞 metadata）。
+    metadata: Optional[Dict[str, Any]] = None
