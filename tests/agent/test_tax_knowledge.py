@@ -5,6 +5,11 @@ import pytest
 
 from backend.agent.tax_knowledge_store import TaxKnowledgeStore, KnowledgeSection
 from backend.agent.tax_knowledge_prompts import TAX_KB_SUBAGENT_PROMPT
+from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+from backend.agent.tools import create_mcp_servers
+from backend.agent.engine import TaxAgentEngine
+from backend.registry import JurisdictionRegistry
+from backend.agent.prompts import get_system_prompt
 
 
 def test_subagent_prompt_exists():
@@ -123,18 +128,11 @@ class TestTaxKnowledgeTools:
         assert "Zero-rated" in parsed["results"][0]["content"]
 
 
-from backend.agent.engine import TaxAgentEngine
-from backend.registry import JurisdictionRegistry
-
-
 def test_engine_has_global_kb_server():
     registry = JurisdictionRegistry()
     engine = TaxAgentEngine(registry=registry, api_key="dummy")
     assert engine._mcp_servers is not None
     assert ("global", "tax_kb") in engine._mcp_servers
-
-
-from backend.agent.prompts import get_system_prompt
 
 
 def test_prompt_mentions_tax_kb_subagent():
