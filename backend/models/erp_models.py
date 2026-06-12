@@ -68,3 +68,24 @@ class ImportResult(BaseModel):
     # 使用。Optional 是为了不破坏没有 metadata 字段的旧 case（CSV 解析
     # 路径不会塞 metadata）。
     metadata: Optional[Dict[str, Any]] = None
+
+
+class HubInvoice(BaseModel):
+    """一张在 Import Hub 中存储的发票。
+
+    统一三种来源(ERPNext pull / CSV / push)的最小表示。
+    同一 period 内按 id 去重。
+    """
+    id: str
+    txn_date: date
+    counterparty: str
+    net_amount: Decimal
+    vat_amount: Decimal
+    gross_amount: Decimal
+    vat_rate: Decimal
+    tax_code: str
+    cancelled: bool = False       # ERPNext docstatus=2
+    is_amend: bool = False        # ERPNext Credit/Debit Note
+    parent: Optional[str] = None  # 原发票 id(若 is_amend)
+    source: str = "erpnext_pull"  # erpnext_pull | csv | erpnext_push
+    pulled_at: Optional[str] = None  # ISO8601 string
