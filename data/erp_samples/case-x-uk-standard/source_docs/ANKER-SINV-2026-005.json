@@ -1,0 +1,30 @@
+{
+  "docname": "ANKER-SINV-2026-005",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "customer": "Argos Ltd",
+  "posting_date": "2026-02-09",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 152.0,
+      "amount": 152.0,
+      "net_amount": 152.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 30.4
+    }
+  ],
+  "net_amount": 152.0,
+  "vat_amount": 30.4,
+  "grand_total": 182.4
+}

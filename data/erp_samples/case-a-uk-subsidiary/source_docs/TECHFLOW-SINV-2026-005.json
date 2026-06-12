@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-005",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "eBay UK Seller Hub",
+  "posting_date": "2026-01-22",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 6300.0,
+      "amount": 6300.0,
+      "net_amount": 6300.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 1260.0
+    }
+  ],
+  "net_amount": 6300.0,
+  "vat_amount": 1260.0,
+  "grand_total": 7560.0,
+  "source": "tax_integration"
+}

@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-PINV-2026-005",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "supplier": "腾讯云 Tencent Cloud",
+  "posting_date": "2026-02-25",
+  "bill_no": "ZKTECH-PINV-2026-005",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 80000.0,
+      "amount": 80000.0,
+      "net_amount": 80000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T6-CN",
+      "rate": 0.06,
+      "tax_amount": 4800.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 80000.0,
+  "vat_amount": 4800.0,
+  "grand_total": 84800.0
+}

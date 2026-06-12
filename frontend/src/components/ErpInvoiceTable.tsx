@@ -115,7 +115,9 @@ function InvoiceTable({
 export default function ErpInvoiceTable() {
   const buffer = useDemoStore((s) => s.buffer)
   const setErpData = useDemoStore((s) => s.setErpData)
+  // 用 preset.erpCaseId 作为后端 case 目录名(替代原来的 presetId 直传)
   const presetId = buffer?.presetId ?? ''
+  const erpCaseId = buffer?.preset?.erpCaseId ?? presetId
 
   const {
     data: importResult,
@@ -124,9 +126,9 @@ export default function ErpInvoiceTable() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['erp', 'case', presetId],
-    queryFn: () => api.erp.getCase(presetId),
-    enabled: !!presetId && !buffer?.erpData,
+    queryKey: ['erp', 'case', erpCaseId],
+    queryFn: () => api.erp.getCase(erpCaseId),
+    enabled: !!erpCaseId && !buffer?.erpData,
     staleTime: Infinity,
   })
 

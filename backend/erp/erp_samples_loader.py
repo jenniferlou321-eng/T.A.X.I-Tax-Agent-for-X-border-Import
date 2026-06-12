@@ -39,6 +39,8 @@ def list_demo_cases() -> List[str]:
 
     flat layout  → 文件 stem
     directory layout → 目录名（且包含 erp_import.json）
+
+    跳过以 `_deprecated_` / `_DEPRECATED_` 开头的目录(历史废弃 fixture)。
     """
     if not SAMPLES_DIR.exists():
         return []
@@ -49,6 +51,9 @@ def list_demo_cases() -> List[str]:
     # directory layout
     for d in SAMPLES_DIR.iterdir():
         if d.is_dir() and (d / "erp_import.json").is_file():
+            # 跳过废弃目录
+            if d.name.startswith("_deprecated_") or d.name.startswith("_DEPRECATED_"):
+                continue
             cases.add(d.name)
     return sorted(cases)
 

@@ -1,0 +1,18 @@
+{
+  "box1_vat_due_sales": "41523.50",
+  "box2_vat_due_acquisitions": "13700.00",
+  "box3_total_vat_due": "55223.50",
+  "box4_vat_reclaimed": "47612.00",
+  "box5_net_vat_due": "7611.50",
+  "box6_total_sales_ex_vat": 282750,
+  "box7_total_purchases_ex_vat": 240460,
+  "box8_total_goods_supplied_eu": 42450,
+  "box9_total_goods_acquired_eu": 68500,
+  "scheme_flags": [
+    "Zero-rating adjustment (Box 1 includes £3.50 rounding adj.)",
+    "EU B2B reverse charge (DE £12,500 + FR £15,000 + ES £8,750 + SE £6,200 = £42,450 Box 8)",
+    "EU acquisition reverse charge (DE £50,000 + NL £18,500 = £68,500 Box 9, £13,700 Box 2)",
+    "Import C79 reclaim (2 consignments, recoverable in Box 4)"
+  ],
+  "reconciliation_note": "All Box values computed from sum of sales/purchases net_amount and vat_amount in erp_import.json. No discrepancy."
+}

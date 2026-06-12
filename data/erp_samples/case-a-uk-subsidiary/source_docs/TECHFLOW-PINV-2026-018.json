@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-018",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Sage Accounting",
+  "posting_date": "2026-03-10",
+  "bill_no": "PI-2026-018",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 550.0,
+      "amount": 550.0,
+      "net_amount": 550.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 110.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 550.0,
+  "vat_amount": 110.0,
+  "grand_total": 660.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

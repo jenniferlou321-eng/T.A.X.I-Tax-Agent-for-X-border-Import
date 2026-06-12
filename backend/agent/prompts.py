@@ -142,7 +142,7 @@ When calling tools, use the exact parameter names and types. The 9-Box values fo
 ```json
 {
   "source": "demo",
-  "case_id": "cn_parent_uk_sub_q1_2026"
+  "case_id": "case-b-cn-parent"
 }
 ```
 (Omit `case_id` to list available cases. Use `source: "csv"` + `csv_base64` for a user-supplied file.)

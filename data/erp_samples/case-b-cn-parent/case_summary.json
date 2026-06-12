@@ -1,0 +1,46 @@
+{
+  "case_id": "case-b-cn-parent",
+  "title": "中英跨境集团 — CN 母公司申报 (Shenzhen TechFlow 科技)",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "period": "Q1 2026",
+  "period_label": "2026 Q1 (1-3月)",
+  "filing_deadlines": {
+    "vat_return_monthly_deadline": "2026-04-15",
+    "cit_q1_prepayment_deadline": "2026-04-15",
+    "wht_monthly_deadline": "2026-04-15",
+    "tp_documentation_deadline": "2026-06-30"
+  },
+  "counts": {
+    "sales_invoices_13pct": 15,
+    "sales_invoices_6pct": 5,
+    "purchase_invoices": 10,
+    "intra_group_transactions": 3,
+    "source_documents": 28
+  },
+  "scenarios_covered": [
+    "CN VAT 13% standard (domestic goods sales)",
+    "CN VAT 6% modern services (incl. cross-border group services to UK sub)",
+    "CN VAT input credit (raw materials, equipment, services)",
+    "CN CIT 25% standard (Q1 prepayment)",
+    "Withholding tax: UK→HK royalty 7% (中港税收安排)",
+    "Withholding tax: UK→HK management fee 5% (独立交易原则 + 中港协定)",
+    "Withholding tax: UK→HK dividend 0% (Q1 no distribution)",
+    "Transfer pricing: Cost Plus 8-12% (group services), TP adjustment",
+    "DAC6 C1(b) hallmark (cross-border related party arrangement)",
+    "BEPS 2.0 Pillar Two: not in scope (consolidated revenue < EUR 750M)"
+  ],
+  "group_role": "Ultimate parent (wholly owns HK TechFlow Holdings which wholly owns UK TechFlow Distribution Ltd)",
+  "expected_outputs": "see expected_outputs.json",
+  "expected_files": [
+    "case_summary.json (this file)",
+    "erp_import.json (CN-side simplified sales/purchases for ErpInvoiceTable rendering)",
+    "expected_outputs.json (CN VAT/CIT/WHT/TP expected numbers, non-9-Box)",
+    "source_docs/ZKTECH-SINV-2026-001..020.json (20 sales invoices)",
+    "source_docs/ZKTECH-PINV-2026-001..010.json (10 purchase invoices)",
+    "source_docs/ZKTECH-IG-2026-001..003.json (3 intra-group transactions)",
+    "source_docs/ZKTECH-TP-DOC-2026-Q1.json (transfer pricing contemporaneous documentation)",
+    "source_docs/ZKTECH-VAT-FILING-2025-12.json (prior month VAT filing receipt)",
+    "source_docs/ZKTECH-CIT-2024-ANNUAL.json (prior year CIT annual settlement)"
+  ]
+}

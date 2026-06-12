@@ -1,0 +1,41 @@
+{
+  "case_id": "case-x-uk-standard",
+  "title": "入门:UK VAT 标准应交 (Standard Taxable)",
+  "company": "Anker UK Ltd",
+  "vrn": "960606228",
+  "period": "Q1 2026",
+  "period_key": "25A1",
+  "filing_deadline": "2026-05-07",
+  "counts": {
+    "sales_invoices": 7,
+    "purchase_invoices": 6,
+    "expense_claims": 0,
+    "intra_group_transactions": 0,
+    "source_documents": 13
+  },
+  "scenarios_covered": [
+    "T1 domestic standard 20% (B2B + B2C)",
+    "T2 EU acquisition reverse charge (minimal)",
+    "T9 EU B2B reverse charge (minimal)",
+    "Standard taxable scenario: Box 5 > 0 (pay HMRC)"
+  ],
+  "group_role": "Standalone UK subsidiary (illustrative)",
+  "expected_nine_box": {
+    "box1_vat_due_sales": "250.00",
+    "box2_vat_due_acquisitions": "50.00",
+    "box3_total_vat_due": "300.00",
+    "box4_vat_reclaimed": "120.00",
+    "box5_net_vat_due": "180.00",
+    "box6_total_sales_ex_vat": 1250,
+    "box7_total_purchases_ex_vat": 600,
+    "box8_total_goods_supplied_eu": 100,
+    "box9_total_goods_acquired_eu": 50
+  },
+  "expected_files": [
+    "case_summary.json (this file)",
+    "erp_import.json (ImportResult with sales/purchases/erp_provided_boxes)",
+    "expected_nine_box.json (teaching baseline)",
+    "source_docs/ANKER-SINV-2026-001..007.json (7 sales invoices)",
+    "source_docs/ANKER-PINV-2026-001..006.json (6 purchase invoices)"
+  ]
+}

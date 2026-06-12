@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-018",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "ElectroSpain SL",
+  "posting_date": "2026-03-12",
+  "is_eu": true,
+  "is_reverse_charge": true,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 8750.0,
+      "amount": 8750.0,
+      "net_amount": 8750.0,
+      "tax_code": "T9"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T9",
+      "rate": 0.0,
+      "tax_amount": 0.0
+    }
+  ],
+  "net_amount": 8750.0,
+  "vat_amount": 0.0,
+  "grand_total": 8750.0,
+  "source": "tax_integration"
+}

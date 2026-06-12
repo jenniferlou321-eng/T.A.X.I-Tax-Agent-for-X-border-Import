@@ -9,5 +9,5 @@ def erp_samples_dir() -> Path:
 
 
 @pytest.fixture
-def techflow_case_id() -> str:
-    return "techflow_q1_2026"
+def case_a_uk_subsidiary_id() -> str:
+    return "case-a-uk-subsidiary"

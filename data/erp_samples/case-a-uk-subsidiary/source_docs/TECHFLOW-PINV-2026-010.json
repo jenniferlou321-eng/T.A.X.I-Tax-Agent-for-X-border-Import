@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-010",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Amazon Web Services",
+  "posting_date": "2026-02-10",
+  "bill_no": "PI-2026-010",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 2800.0,
+      "amount": 2800.0,
+      "net_amount": 2800.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 560.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 2800.0,
+  "vat_amount": 560.0,
+  "grand_total": 3360.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

@@ -44,7 +44,7 @@ class Orchestrator:
         import_payload: Optional[dict] = None,
     ) -> FilingResult:
         """执行完整申报管线。import_payload 形如:
-           {"source": "demo", "case_id": "techflow_q1_2026"}
+           {"source": "demo", "case_id": "case-a-uk-subsidiary"}
            或
            {"source": "csv", "csv_bytes_b64": "..."}
         """

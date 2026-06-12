@@ -1,0 +1,72 @@
+{
+  "vat_outputs": {
+    "output_vat_13_cny": 845000.00,
+    "output_vat_6_cny": 135000.00,
+    "input_vat_cny": 420000.00,
+    "vat_payable_cny": 560000.00,
+    "intra_group_service_revenue_cny": 2100000.00,
+    "note": "Output VAT 13% from domestic goods sales (¥6,500,000 × 13%). Output VAT 6% from modern services incl. ¥2,100,000 cross-border IT/management services to UK sub + ¥150,000 local consulting. Input VAT from raw materials, equipment, office services."
+  },
+  "cit_outputs": {
+    "revenue_total_cny": 8600000.00,
+    "revenue_breakdown": {
+      "domestic_goods_sales_cny": 6500000.00,
+      "modern_services_cny": 2100000.00
+    },
+    "cost_total_cny": 4200000.00,
+    "period_expenses_cny": 600000.00,
+    "pretax_income_cny": 3800000.00,
+    "cit_payable_cny": 950000.00,
+    "effective_rate": 0.25,
+    "note": "Standard 25% rate. Eligible for 15% high-tech enterprise reduction (assumed not yet certified in this period)."
+  },
+  "withholding_tax": {
+    "dividend_from_uk_sub_cny": 0,
+    "dividend_wht_rate": 0.00,
+    "dividend_note": "Q1 2026: UK sub has not yet distributed dividends to HK holding (typical pattern: dividend declared at FY-end).",
+    "royalty_from_uk_sub_cny": 150000.00,
+    "royalty_wht_rate": 0.07,
+    "royalty_tax_cny": 10500.00,
+    "royalty_note": "Trademark licensing fee from UK sub to CN parent. 7% under 中港税收安排 (China-HK DTA, Article 11 Royalties).",
+    "mgmt_fee_from_uk_cny": 2100000.00,
+    "mgmt_fee_wht_rate": 0.05,
+    "mgmt_fee_tax_cny": 105000.00,
+    "mgmt_fee_note": "IT/management service fee from UK sub to CN parent. 5% under 中港税收安排 (Article 7 Business Profits, subject to beneficial owner test).",
+    "total_wht_cny": 115500.00
+  },
+  "transfer_pricing": {
+    "intra_group_total_cny": 2250000.00,
+    "intra_group_breakdown": {
+      "it_services_to_uk_sub_cny": 1500000.00,
+      "management_consulting_to_uk_sub_cny": 600000.00,
+      "trademark_licensing_to_uk_sub_cny": 150000.00
+    },
+    "tp_method": "Cost Plus 8-12% (CN parent provides services to UK sub at cost + markup)",
+    "tp_adjustment_cny": 320000.00,
+    "tp_adjustment_note": "Adjustment to bring intercompany pricing to arm's length range. +¥320,000 = additional taxable income in CN.",
+    "documentation_status": "master_file+local_file",
+    "beps2_pillar": "not_in_scope",
+    "beps2_note": "Group consolidated revenue < EUR 750M threshold, not subject to GloBE rules.",
+    "contemporaneous_documentation": true
+  },
+  "dac6_disclosures": {
+    "hallmark_C1b_cross_border": true,
+    "hallmark_note": "Cross-border arrangement between UK sub and CN parent (related party) where hallmark C1(b) applies: transfer pricing outcome not at arm's length.",
+    "cross_border_rod_cny": 2250000.00,
+    "rod_note": "Reportable OECD cross-border amount: ¥2,250,000 (sum of intra-group services + royalty)"
+  },
+  "expected_filings": {
+    "vat_return_period": "monthly",
+    "vat_filing_deadline": "2026-04-15",
+    "cit_q1_prepayment_deadline": "2026-04-15",
+    "wht_monthly_deadline": "2026-04-15",
+    "tp_documentation_deadline": "2026-06-30",
+    "cit_annual_settlement_deadline": "2027-05-31"
+  },
+  "cross_reference_to_uk_case": {
+    "uk_case_id": "case-a-uk-subsidiary",
+    "uk_box1_vat_due_sales": "41523.50",
+    "uk_box6_total_sales_ex_vat": 282750,
+    "note": "UK subsidiary's external sales (£282,750 Box 6) appear in CN parent's books only as 'import from related party' in intra-group cost side. The ¥2,100,000 service revenue on CN side is what UK sub pays as expense (purchase), so it is NOT in UK's Box 6 (Box 6 only counts external sales). This is the correct accounting treatment for group internal flows."
+  }
+}

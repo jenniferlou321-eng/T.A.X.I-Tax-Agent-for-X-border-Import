@@ -1,0 +1,30 @@
+{
+  "docname": "ANKER-SINV-2026-001",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "customer": "Currys PC World",
+  "posting_date": "2026-01-05",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 250.0,
+      "amount": 250.0,
+      "net_amount": 250.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 50.0
+    }
+  ],
+  "net_amount": 250.0,
+  "vat_amount": 50.0,
+  "grand_total": 300.0
+}

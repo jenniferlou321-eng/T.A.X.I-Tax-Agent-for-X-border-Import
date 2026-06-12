@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-016",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "Dixons Carphone",
+  "posting_date": "2026-03-05",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 16800.0,
+      "amount": 16800.0,
+      "net_amount": 16800.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 3360.0
+    }
+  ],
+  "net_amount": 16800.0,
+  "vat_amount": 3360.0,
+  "grand_total": 20160.0,
+  "source": "tax_integration"
+}

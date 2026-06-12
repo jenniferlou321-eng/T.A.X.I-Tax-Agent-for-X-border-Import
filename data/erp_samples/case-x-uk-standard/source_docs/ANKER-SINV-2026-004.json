@@ -1,0 +1,30 @@
+{
+  "docname": "ANKER-SINV-2026-004",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "customer": "Deutsche GmbH (DE)",
+  "posting_date": "2026-01-26",
+  "is_eu": true,
+  "is_reverse_charge": true,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 100.0,
+      "amount": 100.0,
+      "net_amount": 100.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T9",
+      "rate": 0.0,
+      "tax_amount": 0.0
+    }
+  ],
+  "net_amount": 100.0,
+  "vat_amount": 0.0,
+  "grand_total": 100.0
+}

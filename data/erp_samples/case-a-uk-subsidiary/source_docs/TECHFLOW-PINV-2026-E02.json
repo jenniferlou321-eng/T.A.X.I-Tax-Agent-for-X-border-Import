@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-E02",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "ElectroComponents NL BV",
+  "posting_date": "2026-03-01",
+  "bill_no": "PI-2026-E02",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 18500.0,
+      "amount": 18500.0,
+      "net_amount": 18500.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T2",
+      "rate": 0.2,
+      "tax_amount": 3700.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 18500.0,
+  "vat_amount": 3700.0,
+  "grand_total": 22200.0,
+  "is_eu_acquisition": true,
+  "source": "tax_integration"
+}

@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-002",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "Amazon UK Marketplace",
+  "posting_date": "2026-01-12",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 8750.0,
+      "amount": 8750.0,
+      "net_amount": 8750.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 1750.0
+    }
+  ],
+  "net_amount": 8750.0,
+  "vat_amount": 1750.0,
+  "grand_total": 10500.0,
+  "source": "tax_integration"
+}

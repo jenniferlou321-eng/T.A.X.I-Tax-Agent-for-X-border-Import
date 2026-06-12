@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-009",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "Halfords Group",
+  "posting_date": "2026-02-08",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 7800.0,
+      "amount": 7800.0,
+      "net_amount": 7800.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 1560.0
+    }
+  ],
+  "net_amount": 7800.0,
+  "vat_amount": 1560.0,
+  "grand_total": 9360.0,
+  "source": "tax_integration"
+}

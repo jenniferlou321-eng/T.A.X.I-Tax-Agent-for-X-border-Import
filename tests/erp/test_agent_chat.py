@@ -9,10 +9,10 @@ from backend.agent.agui_adapter import stream_agui_events
 @pytest.mark.asyncio
 async def test_ingest_erp_data_demo_case():
     tools = UKVATAgentToolSet()
-    result = await tools.ingest_erp_data(source="demo", case_id="techflow_q1_2026")
+    result = await tools.ingest_erp_data(source="demo", case_id="case-a-uk-subsidiary")
     assert "content" in result
     text = result["content"][0]["text"]
-    assert "techflow" in text or "import_result" in text
+    assert "case-a-uk-subsidiary" in text or "import_result" in text
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,31 @@
+{
+  "docname": "ANKER-PINV-2026-005",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "supplier": "Cloud Services UK",
+  "posting_date": "2026-02-18",
+  "bill_no": "ANKER-PINV-2026-005",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 100.0,
+      "amount": 100.0,
+      "net_amount": 100.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 20.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 100.0,
+  "vat_amount": 20.0,
+  "grand_total": 120.0,
+  "is_eu_acquisition": false
+}

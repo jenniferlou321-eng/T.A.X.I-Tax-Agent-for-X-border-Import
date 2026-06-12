@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-006",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "BT Business",
+  "posting_date": "2026-01-22",
+  "bill_no": "PI-2026-006",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 450.0,
+      "amount": 450.0,
+      "net_amount": 450.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 90.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 450.0,
+  "vat_amount": 90.0,
+  "grand_total": 540.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

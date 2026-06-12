@@ -74,6 +74,7 @@ Currently live: **UK VAT** via HMRC Making Tax Digital API. UK SA / CT / PAYE / 
 | 加一个新国家 | [`docs/architecture/adding-new-jurisdiction.md`](./docs/architecture/adding-new-jurisdiction.md) |
 | 加一个新税种 | [Common Tasks](#common-tasks) |
 | 理解 6 阶段管线 | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
+| 评估可拓展性 / 改国家隔离架构 | [`docs/architecture/extensibility.md`](./docs/architecture/extensibility.md) |
 | 改 UI 设计 | [`design-system/taxagent-global/MASTER.md`](./design-system/taxagent-global/MASTER.md) |
 | 改 Agent 工具 | [Agent Layer](#agent-layer) |
 | **前端部署到 9000 端口 + 公网可访问** | [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md) |

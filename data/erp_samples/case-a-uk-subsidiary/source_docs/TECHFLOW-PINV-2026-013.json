@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-013",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Hiscox Business Insurance",
+  "posting_date": "2026-02-18",
+  "bill_no": "PI-2026-013",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 2400.0,
+      "amount": 2400.0,
+      "net_amount": 2400.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T0",
+      "rate": 0.0,
+      "tax_amount": 0.0,
+      "is_recoverable": false
+    }
+  ],
+  "net_amount": 2400.0,
+  "vat_amount": 0.0,
+  "grand_total": 2400.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

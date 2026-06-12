@@ -1,0 +1,50 @@
+{
+  "docname": "ZKTECH-TP-DOC-2026-Q1",
+  "doctype": "Transfer Pricing Contemporaneous Documentation",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "fiscal_year": 2026,
+  "period": "Q1 2026",
+  "related_parties": [
+    {
+      "name": "TechFlow Holdings (HK) Ltd",
+      "country": "HK",
+      "ownership": "100%"
+    },
+    {
+      "name": "TechFlow Distribution Ltd",
+      "country": "GB",
+      "ownership": "100% via HK"
+    }
+  ],
+  "controlled_transactions": [
+    {
+      "counterparty": "TechFlow Distribution Ltd (UK)",
+      "type": "IT Services",
+      "amount_cny": 2100000.0,
+      "tp_method": "Cost Plus 10%",
+      "arm_length_range": "8%-12% markup",
+      "actual_markup": "10%"
+    },
+    {
+      "counterparty": "TechFlow Holdings (HK)",
+      "type": "Trademark Licensing",
+      "amount_cny": 150000.0,
+      "tp_method": "CUP / Comparable Uncontrolled Price",
+      "arm_length_range": "5%-10% royalty",
+      "actual_royalty_rate": "6%"
+    },
+    {
+      "counterparty": "TechFlow Holdings (HK)",
+      "type": "Management Consulting",
+      "amount_cny": 500000.0,
+      "tp_method": "Cost Plus 8%",
+      "arm_length_range": "5%-10% markup",
+      "actual_markup": "8%"
+    }
+  ],
+  "documentation_completion": "2026-04-15",
+  "master_file_prepared": true,
+  "local_file_prepared": true,
+  "cbcr_required": false,
+  "cbcr_note": "Group consolidated revenue < RMB 5.5B (≈ EUR 750M) threshold, CbCR not required."
+}

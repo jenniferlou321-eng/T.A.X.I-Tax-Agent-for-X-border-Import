@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-PINV-2026-003",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "supplier": "富士康 Foxconn Shenzhen",
+  "posting_date": "2026-02-05",
+  "bill_no": "ZKTECH-PINV-2026-003",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 1200000.0,
+      "amount": 1200000.0,
+      "net_amount": 1200000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1-CN",
+      "rate": 0.13,
+      "tax_amount": 156000.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 1200000.0,
+  "vat_amount": 156000.0,
+  "grand_total": 1356000.0
+}

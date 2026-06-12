@@ -33,7 +33,7 @@ async def test_full_pipeline_with_demo_case_import():
 
     result = await orch.run(
         adapter, TaxType.VAT, data,
-        import_payload={"source": "demo", "case_id": "techflow_q1_2026"},
+        import_payload={"source": "demo", "case_id": "case-a-uk-subsidiary"},
     )
 
     assert result.filing_id is not None

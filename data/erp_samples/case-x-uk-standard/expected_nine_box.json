@@ -1,0 +1,13 @@
+{
+  "box1_vat_due_sales": "250.00",
+  "box2_vat_due_acquisitions": "50.00",
+  "box3_total_vat_due": "300.00",
+  "box4_vat_reclaimed": "120.00",
+  "box5_net_vat_due": "180.00",
+  "box6_total_sales_ex_vat": 1250,
+  "box7_total_purchases_ex_vat": 600,
+  "box8_total_goods_supplied_eu": 100,
+  "box9_total_goods_acquired_eu": 50,
+  "scheme_flags": [],
+  "reconciliation_note": "Box 1 = 1250 × 20% = 250. Box 5 = 250 + 50 - 120 = 180 (positive → pay HMRC). Designed for first-time VAT 9-Box learning."
+}

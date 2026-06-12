@@ -90,6 +90,6 @@
 
 ## 🔗 关联
 
-- **后端旗舰 ERP fixture**:`data/erp_samples/techflow_q1_2026.json`(UK 子公司 Q1 数字严格一致)
-- **集团目录式 fixture**:`data/erp_samples/cn_parent_uk_sub_q1_2026/`(CN 母 + HK 控 + UK 子,带源文档)
-- **前端卡片对应**:`casePresets.ts#real-business-q1`(A5',数字与此 case 严格一致)
+- **后端旗舰 ERP fixture**:`data/erp_samples/case-a-uk-subsidiary/`(UK 子公司 Q1 数字严格一致)
+- **集团目录式 fixture**:`data/erp_samples/case-b-cn-parent/`(CN 母 + HK 控 + UK 子,目录式 + 38 份源文档)
+- **前端卡片对应**:`casePresets.ts#case-a-uk-subsidiary`(A,数字与此 case 严格一致)

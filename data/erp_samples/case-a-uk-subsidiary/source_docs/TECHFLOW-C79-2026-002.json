@@ -1,0 +1,17 @@
+{
+  "docname": "TECHFLOW-C79-2026-002",
+  "docstatus": 1,
+  "doctype": "C79 Import VAT Certificate",
+  "company": "TechFlow Distribution Ltd",
+  "eori": "GB960606228000",
+  "import_date": "2026-03-08",
+  "entry_number": "ENS-2026-022-002",
+  "country_of_origin": "CN",
+  "supplier": "Shenzhen TechFlow Technology Co., Ltd.",
+  "goods_value_gbp": 43000.0,
+  "import_vat_paid_gbp": 8600.0,
+  "duty_paid_gbp": 0.0,
+  "vat_reclaimable_in_box4": 8600.0,
+  "claim_month": "2026-03",
+  "source": "hmrc_c79"
+}

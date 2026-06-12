@@ -1044,18 +1044,18 @@ export default function AgentChatPage() {
               onClick={loadSampleData}
               disabled={isLoading || sampleDataLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 text-accent rounded-lg hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="加载 TechFlow Distribution Ltd 2026 Q1 真实数据"
+              title="加载 Shenzhen TechFlow 集团 Q1 2026 跨境数据"
             >
               {sampleDataLoading ? (
                 <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <BuildingOfficeIcon className="w-3.5 h-3.5" />
               )}
-              {sampleData ? '重新分析 TechFlow Q1 数据' : '加载 TechFlow Q1 真实数据'}
+              {sampleData ? '重新分析集团 Q1 跨境数据' : '加载集团 Q1 跨境数据'}
             </button>
             {sampleData && (
               <span className="text-[11px] text-fg-dim">
-                ✅ 已加载: TechFlow Distribution Ltd 2026 Q1
+                ✅ 已加载: Shenzhen TechFlow 集团 Q1 2026
               </span>
             )}
             <button

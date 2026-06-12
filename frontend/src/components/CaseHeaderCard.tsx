@@ -1,12 +1,10 @@
-import { FileText, TrendingDown, CircleDashed, AlertTriangle, Building2 } from 'lucide-react'
+import { FileText, Building2, Building } from 'lucide-react'
 import type { CasePreset } from '../data/casePresets'
 
 const iconMap: Record<string, React.ElementType> = {
   FileText,
-  TrendingDown,
-  CircleDashed,
-  AlertTriangle,
   Building2,
+  Building,
 }
 
 interface CaseHeaderCardProps {
@@ -15,6 +13,7 @@ interface CaseHeaderCardProps {
 
 export default function CaseHeaderCard({ preset }: CaseHeaderCardProps) {
   const Icon = iconMap[preset.icon] || Building2
+  const isCn = preset.taxpayer.tax_id_type === 'uscc'
 
   return (
     <div className="card p-5 flex items-start gap-4">
@@ -29,7 +28,7 @@ export default function CaseHeaderCard({ preset }: CaseHeaderCardProps) {
             企业: <span className="text-fg font-medium">{preset.taxpayer.name}</span>
           </span>
           <span>
-            VRN: <span className="font-mono text-fg">{preset.taxpayer.tax_id}</span>
+            {isCn ? '统一社会信用代码' : 'VRN'}: <span className="font-mono text-fg">{preset.taxpayer.tax_id}</span>
           </span>
         </div>
       </div>

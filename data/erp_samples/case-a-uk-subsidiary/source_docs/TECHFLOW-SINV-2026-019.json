@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-019",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "AO World plc",
+  "posting_date": "2026-03-15",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 19500.0,
+      "amount": 19500.0,
+      "net_amount": 19500.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 3900.0
+    }
+  ],
+  "net_amount": 19500.0,
+  "vat_amount": 3900.0,
+  "grand_total": 23400.0,
+  "source": "tax_integration"
+}

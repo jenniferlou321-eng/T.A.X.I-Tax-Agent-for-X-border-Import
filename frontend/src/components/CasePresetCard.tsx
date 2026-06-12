@@ -1,4 +1,4 @@
-import { FileText, TrendingDown, CircleDashed, AlertTriangle, CircleDot, Building2, CheckCircle } from 'lucide-react';
+import { FileText, Building2, Building, CircleDot, CheckCircle } from 'lucide-react';
 import type { CasePreset } from '../data/casePresets';
 
 interface CasePresetCardProps {
@@ -8,7 +8,7 @@ interface CasePresetCardProps {
 }
 
 const iconMap: Record<string, React.ElementType> = {
-  FileText, TrendingDown, CircleDashed, AlertTriangle, Building2,
+  FileText, Building2, Building,
 };
 
 export default function CasePresetCard({ preset, onLoad, isSelected = false }: CasePresetCardProps) {

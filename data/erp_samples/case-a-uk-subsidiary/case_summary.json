@@ -1,0 +1,46 @@
+{
+  "case_id": "case-a-uk-subsidiary",
+  "title": "中英跨境集团 — UK 子公司申报 (TechFlow Distribution Ltd)",
+  "company": "TechFlow Distribution Ltd",
+  "vrn": "960606228",
+  "eori": "GB960606228000",
+  "period": "Q1 2026",
+  "period_key": "25A1",
+  "filing_deadline": "2026-05-07",
+  "counts": {
+    "sales_invoices": 27,
+    "purchase_invoices": 24,
+    "expense_claims": 0,
+    "intra_group_transactions": 0,
+    "source_documents": 29
+  },
+  "scenarios_covered": [
+    "T1 domestic standard 20% (B2B + B2C)",
+    "T0 zero-rated with rounding adjustment (£3.50)",
+    "T9 EU B2B reverse charge (DE/FR/ES/SE)",
+    "T2 EU acquisition reverse charge (DE/NL)",
+    "T8 import with C79 reclaim (2 consignments)",
+    "T0 non-recoverable filtered out"
+  ],
+  "group_role": "UK subsidiary (wholly owned by Shenzhen TechFlow via HK holding)",
+  "expected_nine_box": {
+    "box1_vat_due_sales": "41523.50",
+    "box2_vat_due_acquisitions": "13700.00",
+    "box3_total_vat_due": "55223.50",
+    "box4_vat_reclaimed": "47612.00",
+    "box5_net_vat_due": "7611.50",
+    "box6_total_sales_ex_vat": 282750,
+    "box7_total_purchases_ex_vat": 240460,
+    "box8_total_goods_supplied_eu": 42450,
+    "box9_total_goods_acquired_eu": 68500
+  },
+  "expected_files": [
+    "case_summary.json (this file)",
+    "erp_import.json (ImportResult with sales/purchases/erp_provided_boxes)",
+    "expected_nine_box.json (teaching baseline)",
+    "source_docs/TECHFLOW-SINV-2026-001..027.json (27 sales invoices, ERPNext-compatible)",
+    "source_docs/TECHFLOW-PINV-2026-001..024.json (24 purchase invoices, ERPNext-compatible)",
+    "source_docs/TECHFLOW-C79-2026-001..002.json (2 import C79 certificates)",
+    "source_docs/TECHFLOW-VAT-MTD-2025-Q4.json (prior quarter HMRC submission receipt)"
+  ]
+}

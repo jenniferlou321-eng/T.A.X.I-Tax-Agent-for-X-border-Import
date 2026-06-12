@@ -1,0 +1,16 @@
+{
+  "docname": "ZKTECH-VAT-FILING-2025-12",
+  "doctype": "VAT Monthly Filing Receipt",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "period": "2025-12 (December 2025)",
+  "filing_date": "2026-01-15",
+  "status": "FILED",
+  "submitted_values": {
+    "output_vat_cny": 285000.0,
+    "input_vat_cny": 142000.0,
+    "vat_payable_cny": 143000.0
+  },
+  "tax_authority": "国家税务总局深圳市前海税务局",
+  "receipt_number": "SZ-QH-VAT-2025-12-91440300MA5DC9X"
+}

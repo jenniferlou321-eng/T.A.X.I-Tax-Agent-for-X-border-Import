@@ -1,29 +1,29 @@
-"""中资跨境案例测试 — cn_parent_uk_sub_q1_2026
+"""中资跨境案例测试 — DEPRECATED
 
-覆盖：
-  1. 案例加载（directory layout）
-  2. 9-Box 计算（算法 vs 预期）
-  3. Reconcile 容差（ERP 自报含 2 处故意差异）
-  4. Orchestrator 6 阶段管线
-  5. Agent 工具链 (ingest → calculate → validate → submit-mock)
+本文件原覆盖旧 fixture `cn_parent_uk_sub_q1_2026` 的端到端流程(UK 子公司视角
+9-Box 计算 + reconcile + orchestrator 6 阶段 + Agent 工具链)。
+
+2026-06 case 精简后:
+  - 旧 fixture 改名为 `_deprecated_cn_parent_uk_sub_q1_2026/`(已停用)
+  - 替代 case 为 `case-b-cn-parent/`,但语义不同:它是 **CN 主场视角**,
+    没有 UK 9-Box 体系(全 0),数字在 expected_outputs.json 里。
+  - Case A (`case-a-uk-subsidiary/`) 才是 UK 视角 9-Box 端到端,
+    已由 tests/erp/test_erp_router.py / test_orchestrator_e2e.py /
+    test_erp_samples_loader.py 等覆盖。
+
+本文件全部 skip,留作历史参考;后续若需要 case-b-cn-parent 的 CN 视角
+集成测试,新建 test_case_b_cn_filing.py。
 """
 import pytest
-import json
-from decimal import Decimal
-from datetime import date
 
-from backend.erp.erp_samples_loader import list_demo_cases, load_demo_case
-from backend.erp.reconcile import compute_taxi_nine_box, reconcile, TOLERANCE_GBP
-from backend.orchestrator import Orchestrator
-from backend.jurisdictions.uk import UKJurisdictionAdapter
-from backend.jurisdictions.uk.vat.agent_tools import UKVATAgentToolSet
-from backend.models.tax_data import (
-    TaxData, TaxType, FiscalPeriod, PeriodType, TaxpayerInfo, LineItem,
+pytestmark = pytest.mark.skip(
+    reason="旧 cn_parent_uk_sub_q1_2026 fixture 已 _deprecated;"
+           "Case A (case-a-uk-subsidiary) 覆盖 UK 视角 9-Box 端到端;"
+           "Case B (case-b-cn-parent) 是 CN 视角,见 test_case_b_outputs.py。"
 )
-from backend.models.results import FilingStatus
 
 
-CASE_ID = "cn_parent_uk_sub_q1_2026"
+CASE_ID = "case-b-cn-parent"
 
 
 # ── 1. 案例加载 ──

@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-SINV-2026-017",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "customer": "TechFlow Distribution Ltd (UK sub)",
+  "posting_date": "2026-02-15",
+  "is_intra_group": true,
+  "ig_note": "IT services to UK sub, intra-group",
+  "items": [
+    {
+      "item_code": "T6-CN-IG",
+      "qty": 1,
+      "rate": 500000.0,
+      "amount": 500000.0,
+      "net_amount": 500000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T6-CN-IG",
+      "rate": 0.06,
+      "tax_amount": 30000.0
+    }
+  ],
+  "net_amount": 500000.0,
+  "vat_amount": 30000.0,
+  "grand_total": 530000.0
+}

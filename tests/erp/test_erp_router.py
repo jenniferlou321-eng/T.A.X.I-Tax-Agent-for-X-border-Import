@@ -23,8 +23,8 @@ def test_list_demo_cases(client):
     assert isinstance(data["cases"], list)
 
 
-def test_load_demo_case_techflow(client):
-    resp = client.get("/api/erp/cases/techflow_q1_2026")
+def test_load_demo_case_uk_subsidiary(client):
+    resp = client.get("/api/erp/cases/case-a-uk-subsidiary")
     assert resp.status_code == 200
     data = resp.json()
     assert data["source_profile"] == "demo"

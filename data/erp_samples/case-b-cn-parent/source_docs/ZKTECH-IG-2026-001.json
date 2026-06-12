@@ -1,0 +1,17 @@
+{
+  "docname": "ZKTECH-IG-2026-001",
+  "doctype": "Inter-Company Transaction",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "counterparty_company": "TechFlow Distribution Ltd",
+  "counterparty_country": "GB",
+  "transaction_type": "IT Services (cross-border)",
+  "posting_date": "2026-01-31",
+  "net_amount_cny": 1000000.0,
+  "vat_amount_cny": 60000.0,
+  "gross_amount_cny": 1060000.0,
+  "vat_rate": 0.06,
+  "related_party": true,
+  "tp_method": "Cost Plus 10%",
+  "withholding_tax": "5% on net under 中港税收安排 Art. 7 (subject to BO test)",
+  "withholding_tax_cny": 50000.0
+}

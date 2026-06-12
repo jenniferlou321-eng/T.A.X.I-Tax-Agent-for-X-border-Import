@@ -10,6 +10,7 @@ import { useDemoStore } from '../stores/demoStore'
 import CaseHeaderCard from '../components/CaseHeaderCard'
 import ErpInvoiceTable from '../components/ErpInvoiceTable'
 import NineBoxEditor from '../components/NineBoxEditor'
+import CnGroupSummaryCard from '../components/CnGroupSummaryCard'
 
 export default function CasePreviewPage() {
   const navigate = useNavigate()
@@ -67,7 +68,12 @@ export default function CasePreviewPage() {
       {/* ERP 原始发票 */}
       <ErpInvoiceTable />
 
-      {/* 9-Box 可编辑表单 */}
+      {/* Case B 专用:CN 集团数字摘要(挂在 preset.groupDataRef='cnParentFiling') */}
+      {buffer.preset.groupDataRef === 'cnParentFiling' && (
+        <CnGroupSummaryCard ref="cnParentFiling" />
+      )}
+
+      {/* 9-Box 可编辑表单(只对 UK 9-Box 案例有意义;Case B lineItems=[] 时 9-Box 为空,UI 上仍然显示) */}
       <NineBoxEditor
         values={buffer.nineBox}
         onChange={setNineBoxValue}

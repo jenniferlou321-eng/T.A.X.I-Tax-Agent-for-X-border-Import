@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-SINV-2026-020",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "customer": "TechFlow Holdings (HK) Ltd",
+  "posting_date": "2026-03-31",
+  "is_intra_group": true,
+  "ig_note": "Management consulting to HK holding, 0% VAT (境外)",
+  "items": [
+    {
+      "item_code": "T0-CN-IG-SVC",
+      "qty": 1,
+      "rate": 500000.0,
+      "amount": 500000.0,
+      "net_amount": 500000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T0-CN-IG-SVC",
+      "rate": 0.0,
+      "tax_amount": 0.0
+    }
+  ],
+  "net_amount": 500000.0,
+  "vat_amount": 0.0,
+  "grand_total": 500000.0
+}

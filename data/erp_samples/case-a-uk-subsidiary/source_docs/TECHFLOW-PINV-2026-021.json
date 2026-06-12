@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-021",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Vodafone Business",
+  "posting_date": "2026-03-18",
+  "bill_no": "PI-2026-021",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 980.0,
+      "amount": 980.0,
+      "net_amount": 980.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 196.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 980.0,
+  "vat_amount": 196.0,
+  "grand_total": 1176.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

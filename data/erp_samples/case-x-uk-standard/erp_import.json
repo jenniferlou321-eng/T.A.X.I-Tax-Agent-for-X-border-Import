@@ -1,0 +1,43 @@
+{
+  "sales": [
+    {"id": "ANKER-SINV-2026-001", "txn_date": "2026-01-05", "counterparty": "Currys PC World", "net_amount": "250.00", "vat_amount": "50.00", "gross_amount": "300.00", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false},
+    {"id": "ANKER-SINV-2026-002", "txn_date": "2026-01-12", "counterparty": "Amazon UK Marketplace", "net_amount": "175.00", "vat_amount": "35.00", "gross_amount": "210.00", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false},
+    {"id": "ANKER-SINV-2026-003", "txn_date": "2026-01-19", "counterparty": "John Lewis Partnership", "net_amount": "375.00", "vat_amount": "75.00", "gross_amount": "450.00", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false},
+    {"id": "ANKER-SINV-2026-004", "txn_date": "2026-01-26", "counterparty": "Deutsche GmbH (DE)", "net_amount": "100.00", "vat_amount": "0.00", "gross_amount": "100.00", "vat_rate": "0.00", "tax_code": "T9", "is_eu": true, "is_reverse_charge": true},
+    {"id": "ANKER-SINV-2026-005", "txn_date": "2026-02-09", "counterparty": "Argos Ltd", "net_amount": "152.00", "vat_amount": "30.40", "gross_amount": "182.40", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false},
+    {"id": "ANKER-SINV-2026-006", "txn_date": "2026-02-22", "counterparty": "eBay UK Seller Hub", "net_amount": "63.00", "vat_amount": "12.60", "gross_amount": "75.60", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false},
+    {"id": "ANKER-SINV-2026-007", "txn_date": "2026-03-15", "counterparty": "Shopify UK", "net_amount": "135.00", "vat_amount": "27.00", "gross_amount": "162.00", "vat_rate": "0.20", "tax_code": "T1", "is_eu": false, "is_reverse_charge": false}
+  ],
+  "purchases": [
+    {"id": "ANKER-PINV-2026-001", "txn_date": "2026-01-08", "counterparty": "ABC Wholesale UK", "net_amount": "200.00", "vat_amount": "40.00", "gross_amount": "240.00", "vat_rate": "0.20", "tax_code": "T1", "is_recoverable": true, "is_eu_acquisition": false},
+    {"id": "ANKER-PINV-2026-002", "txn_date": "2026-01-15", "counterparty": "Italian SpA (IT)", "net_amount": "50.00", "vat_amount": "0.00", "gross_amount": "50.00", "vat_rate": "0.00", "tax_code": "T2", "is_recoverable": true, "is_eu_acquisition": true},
+    {"id": "ANKER-PINV-2026-003", "txn_date": "2026-01-20", "counterparty": "Logistics UK Ltd", "net_amount": "120.00", "vat_amount": "24.00", "gross_amount": "144.00", "vat_rate": "0.20", "tax_code": "T1", "is_recoverable": true, "is_eu_acquisition": false},
+    {"id": "ANKER-PINV-2026-004", "txn_date": "2026-02-05", "counterparty": "Office Supplies Co", "net_amount": "80.00", "vat_amount": "16.00", "gross_amount": "96.00", "vat_rate": "0.20", "tax_code": "T1", "is_recoverable": true, "is_eu_acquisition": false},
+    {"id": "ANKER-PINV-2026-005", "txn_date": "2026-02-18", "counterparty": "Cloud Services UK", "net_amount": "100.00", "vat_amount": "20.00", "gross_amount": "120.00", "vat_rate": "0.20", "tax_code": "T1", "is_recoverable": true, "is_eu_acquisition": false},
+    {"id": "ANKER-PINV-2026-006", "txn_date": "2026-03-10", "counterparty": "Marketing Agency Ltd", "net_amount": "50.00", "vat_amount": "10.00", "gross_amount": "60.00", "vat_rate": "0.20", "tax_code": "T1", "is_recoverable": true, "is_eu_acquisition": false}
+  ],
+  "erp_provided_boxes": {
+    "box1_vat_due_sales": "250.00",
+    "box2_vat_due_acquisitions": "50.00",
+    "box3_total_vat_due": "300.00",
+    "box4_vat_reclaimed": "120.00",
+    "box5_net_vat_due": "180.00",
+    "box6_total_sales_ex_vat": 1250,
+    "box7_total_purchases_ex_vat": 600,
+    "box8_total_goods_supplied_eu": 100,
+    "box9_total_goods_acquired_eu": 50,
+    "scheme_flags": []
+  },
+  "source_profile": "demo",
+  "source_filename": "case-x-uk-standard/erp_import.json",
+  "source_hash": "case-x-uk-standard-2026-q1",
+  "warnings": [],
+  "rejected_rows": [],
+  "metadata": {
+    "company": "Anker UK Ltd",
+    "currency": "GBP",
+    "vrn": "960606228",
+    "period": "Q1 2026",
+    "scenario": "intro_standard_taxable"
+  }
+}

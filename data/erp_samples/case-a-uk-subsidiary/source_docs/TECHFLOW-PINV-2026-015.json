@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-015",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Staples UK",
+  "posting_date": "2026-02-22",
+  "bill_no": "PI-2026-015",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 680.0,
+      "amount": 680.0,
+      "net_amount": 680.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 136.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 680.0,
+  "vat_amount": 136.0,
+  "grand_total": 816.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

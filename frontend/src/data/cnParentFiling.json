@@ -1,0 +1,91 @@
+{
+  "case_id": "case-b-cn-parent",
+  "case_metadata": {
+    "case_name": "中英跨境集团 — CN 母公司申报 Q1 2026",
+    "scenario": "Shenzhen TechFlow 100% → HK TechFlow Holdings 100% → UK TechFlow Distribution Ltd 集团架构",
+    "purpose": "测试跨境关联交易下的 CN VAT / CIT / WHT / 转让定价 / DAC6 多税种协同",
+    "created_date": "2026-04-15",
+    "version": "1.0 — CN 主场视角"
+  },
+  "cn_parent": {
+    "name_zh": "深圳拓弗科技有限公司",
+    "name_en": "Shenzhen TechFlow Technology Co., Ltd.",
+    "uscc": "91440300MA5DC9X",
+    "address": "深圳市前海深港合作区",
+    "vat_taxpayer_type": "General Taxpayer (一般纳税人)",
+    "vat_rates_applied": [0.13, 0.06, 0.00],
+    "period": {
+      "label": "2026 Q1",
+      "start": "2026-01-01",
+      "end": "2026-03-31",
+      "vat_filing_deadline": "2026-04-15"
+    }
+  },
+  "group_structure": {
+    "ultimate_parent": "Shenzhen TechFlow Technology Co., Ltd. (CN)",
+    "intermediate_holding": "TechFlow Holdings (HK) Ltd",
+    "uk_subsidiary": {
+      "name": "TechFlow Distribution Ltd",
+      "vrn": "960606228",
+      "uk_case_id": "case-a-uk-subsidiary"
+    }
+  },
+  "vat_outputs": {
+    "output_vat_13_cny": 845000.00,
+    "output_vat_6_cny": 135000.00,
+    "input_vat_cny": 420000.00,
+    "vat_payable_cny": 560000.00,
+    "intra_group_service_revenue_cny": 2100000.00
+  },
+  "cit_outputs": {
+    "revenue_total_cny": 8600000.00,
+    "revenue_breakdown": {
+      "domestic_goods_sales_cny": 6500000.00,
+      "modern_services_cny": 2100000.00
+    },
+    "cost_total_cny": 4200000.00,
+    "period_expenses_cny": 600000.00,
+    "pretax_income_cny": 3800000.00,
+    "cit_payable_cny": 950000.00,
+    "effective_rate": 0.25
+  },
+  "withholding_tax": {
+    "dividend_from_uk_sub_cny": 0,
+    "dividend_wht_rate": 0.00,
+    "royalty_from_uk_sub_cny": 150000.00,
+    "royalty_wht_rate": 0.07,
+    "royalty_tax_cny": 10500.00,
+    "mgmt_fee_from_uk_cny": 2100000.00,
+    "mgmt_fee_wht_rate": 0.05,
+    "mgmt_fee_tax_cny": 105000.00,
+    "total_wht_cny": 115500.00
+  },
+  "transfer_pricing": {
+    "intra_group_total_cny": 2250000.00,
+    "tp_method": "Cost Plus 8-12% (group services); CUP 5-10% (royalty)",
+    "tp_adjustment_cny": 320000.00,
+    "documentation_status": "master_file+local_file",
+    "beps2_pillar": "not_in_scope",
+    "beps2_note": "Group consolidated revenue < EUR 750M, not subject to GloBE rules.",
+    "contemporaneous_documentation": true
+  },
+  "dac6_disclosures": {
+    "hallmark_C1b_cross_border": true,
+    "hallmark_note": "Cross-border arrangement between UK sub and CN parent (related party) where hallmark C1(b) applies: transfer pricing outcome not at arm's length.",
+    "cross_border_rod_cny": 2250000.00
+  },
+  "expected_filings": {
+    "vat_return_period": "monthly",
+    "vat_filing_deadline": "2026-04-15",
+    "cit_q1_prepayment_deadline": "2026-04-15",
+    "wht_monthly_deadline": "2026-04-15",
+    "tp_documentation_deadline": "2026-06-30",
+    "cit_annual_settlement_deadline": "2027-05-31"
+  },
+  "cross_reference_to_uk_case": {
+    "uk_case_id": "case-a-uk-subsidiary",
+    "uk_box6_total_sales_ex_vat": 282750,
+    "uk_box1_vat_due_sales": "41523.50",
+    "note": "UK subsidiary's external sales appear in CN parent's books as 'import from related party' in cost side. The ¥2,100,000 service revenue on CN side is what UK sub pays as expense (not in UK's Box 6)."
+  }
+}

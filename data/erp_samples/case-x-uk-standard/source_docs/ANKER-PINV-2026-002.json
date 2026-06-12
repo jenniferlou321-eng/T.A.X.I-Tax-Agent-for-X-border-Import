@@ -1,0 +1,31 @@
+{
+  "docname": "ANKER-PINV-2026-002",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "supplier": "Italian SpA (IT)",
+  "posting_date": "2026-01-15",
+  "bill_no": "ANKER-PINV-2026-002",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 50.0,
+      "amount": 50.0,
+      "net_amount": 50.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T2",
+      "rate": 0.0,
+      "tax_amount": 0.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 50.0,
+  "vat_amount": 0.0,
+  "grand_total": 50.0,
+  "is_eu_acquisition": true
+}

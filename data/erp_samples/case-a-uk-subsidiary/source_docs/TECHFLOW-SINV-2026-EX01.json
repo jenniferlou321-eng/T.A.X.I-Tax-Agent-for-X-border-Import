@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-EX01",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "US Distributor Corp",
+  "posting_date": "2026-03-10",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 25000.0,
+      "amount": 25000.0,
+      "net_amount": 25000.0,
+      "tax_code": "T0"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T0",
+      "rate": 0.0,
+      "tax_amount": 0.0
+    }
+  ],
+  "net_amount": 25000.0,
+  "vat_amount": 0.0,
+  "grand_total": 25000.0,
+  "source": "tax_integration"
+}

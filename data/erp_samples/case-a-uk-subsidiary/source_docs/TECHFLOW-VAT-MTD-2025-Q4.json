@@ -1,0 +1,24 @@
+{
+  "docname": "TECHFLOW-VAT-MTD-2025-Q4",
+  "doctype": "VAT MTD Submission Receipt",
+  "company": "TechFlow Distribution Ltd",
+  "vrn": "960606228",
+  "period_key": "24A4",
+  "period_label": "2025 Q4",
+  "submission_date": "2026-02-07",
+  "processing_date": "2026-02-07",
+  "status": "ACCEPTED",
+  "submitted_boxes": {
+    "box1": "38540.00",
+    "box2": "11200.00",
+    "box3": "49740.00",
+    "box4": "42100.00",
+    "box5": "7640.00",
+    "box6": 268200,
+    "box7": 215300,
+    "box8": 35800,
+    "box9": 56000
+  },
+  "hmrc_receipt_id": "HMRC-VAT-2025Q4-960606228",
+  "source": "hmrc_mtd"
+}

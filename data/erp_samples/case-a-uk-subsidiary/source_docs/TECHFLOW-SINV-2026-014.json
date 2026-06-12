@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-SINV-2026-014",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "customer": "Boots UK Ltd",
+  "posting_date": "2026-02-25",
+  "is_eu": false,
+  "is_reverse_charge": false,
+  "items": [
+    {
+      "item_code": "GOODS-001",
+      "qty": 1,
+      "rate": 8900.0,
+      "amount": 8900.0,
+      "net_amount": 8900.0,
+      "tax_code": "T1"
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 1780.0
+    }
+  ],
+  "net_amount": 8900.0,
+  "vat_amount": 1780.0,
+  "grand_total": 10680.0,
+  "source": "tax_integration"
+}

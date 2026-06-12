@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-SINV-2026-019",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "customer": "TechFlow Holdings (HK) Ltd",
+  "posting_date": "2026-02-28",
+  "is_intra_group": true,
+  "ig_note": "Trademark licensing to HK holding, 0% VAT (境外,仅 CIT)",
+  "items": [
+    {
+      "item_code": "T0-CN-TR",
+      "qty": 1,
+      "rate": 150000.0,
+      "amount": 150000.0,
+      "net_amount": 150000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T0-CN-TR",
+      "rate": 0.0,
+      "tax_amount": 0.0
+    }
+  ],
+  "net_amount": 150000.0,
+  "vat_amount": 0.0,
+  "grand_total": 150000.0
+}

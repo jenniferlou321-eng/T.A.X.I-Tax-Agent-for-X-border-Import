@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-014",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "LinkedIn Sales Navigator",
+  "posting_date": "2026-02-20",
+  "bill_no": "PI-2026-014",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 1200.0,
+      "amount": 1200.0,
+      "net_amount": 1200.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 240.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 1200.0,
+  "vat_amount": 240.0,
+  "grand_total": 1440.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

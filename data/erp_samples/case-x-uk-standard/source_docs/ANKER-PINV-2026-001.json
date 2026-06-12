@@ -1,0 +1,31 @@
+{
+  "docname": "ANKER-PINV-2026-001",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "supplier": "ABC Wholesale UK",
+  "posting_date": "2026-01-08",
+  "bill_no": "ANKER-PINV-2026-001",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 200.0,
+      "amount": 200.0,
+      "net_amount": 200.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 40.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 200.0,
+  "vat_amount": 40.0,
+  "grand_total": 240.0,
+  "is_eu_acquisition": false
+}

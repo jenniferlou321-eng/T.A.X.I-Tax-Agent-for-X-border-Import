@@ -1,0 +1,31 @@
+{
+  "docname": "ANKER-PINV-2026-003",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "Anker UK Ltd",
+  "currency": "GBP",
+  "supplier": "Logistics UK Ltd",
+  "posting_date": "2026-01-20",
+  "bill_no": "ANKER-PINV-2026-003",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 120.0,
+      "amount": 120.0,
+      "net_amount": 120.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 24.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 120.0,
+  "vat_amount": 24.0,
+  "grand_total": 144.0,
+  "is_eu_acquisition": false
+}

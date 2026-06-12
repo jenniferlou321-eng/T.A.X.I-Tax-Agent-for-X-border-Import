@@ -640,7 +640,7 @@ class UKVATAgentToolSet(AgentToolSet):
                         },
                         "case_id": {
                             "type": "string",
-                            "description": "demo case ID, e.g. 'cn_parent_uk_sub_q1_2026', 'techflow_q1_2026'. Omit to list available cases.",
+                            "description": "demo case ID, e.g. 'case-a-uk-subsidiary', 'case-x-uk-standard', 'case-b-cn-parent'. Omit to list available cases.",
                         },
                         "csv_base64": {
                             "type": "string",

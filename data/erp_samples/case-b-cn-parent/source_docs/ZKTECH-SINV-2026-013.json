@@ -1,0 +1,31 @@
+{
+  "docname": "ZKTECH-SINV-2026-013",
+  "docstatus": 1,
+  "doctype": "Sales Invoice",
+  "company": "Shenzhen TechFlow Technology Co., Ltd.",
+  "uscc": "91440300MA5DC9X",
+  "currency": "CNY",
+  "customer": "线下经销商 Distributor C",
+  "posting_date": "2026-03-28",
+  "is_intra_group": false,
+  "ig_note": "",
+  "items": [
+    {
+      "item_code": "T1-CN",
+      "qty": 1,
+      "rate": 200000.0,
+      "amount": 200000.0,
+      "net_amount": 200000.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1-CN",
+      "rate": 0.13,
+      "tax_amount": 26000.0
+    }
+  ],
+  "net_amount": 200000.0,
+  "vat_amount": 26000.0,
+  "grand_total": 226000.0
+}

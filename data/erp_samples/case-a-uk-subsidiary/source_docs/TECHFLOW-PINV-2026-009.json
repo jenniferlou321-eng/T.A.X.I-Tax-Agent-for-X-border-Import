@@ -1,0 +1,32 @@
+{
+  "docname": "TECHFLOW-PINV-2026-009",
+  "docstatus": 1,
+  "doctype": "Purchase Invoice",
+  "company": "TechFlow Distribution Ltd",
+  "currency": "GBP",
+  "supplier": "Xero Accounting Software",
+  "posting_date": "2026-02-08",
+  "bill_no": "PI-2026-009",
+  "items": [
+    {
+      "item_code": "GOODS-PURCH",
+      "qty": 1,
+      "rate": 350.0,
+      "amount": 350.0,
+      "net_amount": 350.0
+    }
+  ],
+  "taxes": [
+    {
+      "tax_code": "T1",
+      "rate": 0.2,
+      "tax_amount": 70.0,
+      "is_recoverable": true
+    }
+  ],
+  "net_amount": 350.0,
+  "vat_amount": 70.0,
+  "grand_total": 420.0,
+  "is_eu_acquisition": false,
+  "source": "tax_integration"
+}

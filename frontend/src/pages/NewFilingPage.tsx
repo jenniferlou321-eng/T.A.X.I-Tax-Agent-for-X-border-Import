@@ -102,7 +102,8 @@ function JurisdictionSelector({
   // VRN 优先从用户档案读取；档案未填则回退到第一个 demo Case 的 VRN
   // （让用户无需手动输入即可继续演示流程）。来源是只读的——
   // 真实场景下 VRN 来自企业设置或个人档案，不是新建申报这一步的临时输入。
-  const fallbackVrn = casePresets.find((p) => p.taxpayer?.tax_id)?.taxpayer.tax_id ?? ''
+  // 显式指定:回退到 Case X (入门) 的 VRN —— 教学用例的 VRN 是稳定常量
+  const fallbackVrn = casePresets.find((p) => p.id === 'case-x-uk-standard')?.taxpayer.tax_id ?? ''
   const vrn = initialVrn || fallbackVrn
 
   return (
@@ -574,7 +575,7 @@ function NewFilingPage() {
   // VRN 默认值：纳税人档案 → demo Case → 空。
   // 用户在 Step 1 不再需要手填。
   const [vrn, setVrn] = useState(
-    profileVrn || casePresets.find((p) => p.taxpayer?.tax_id)?.taxpayer.tax_id || ''
+    profileVrn || casePresets.find((p) => p.id === 'case-x-uk-standard')?.taxpayer.tax_id || ''
   )
   const [selectedObligation, setSelectedObligation] = useState<VATObligation | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([])
