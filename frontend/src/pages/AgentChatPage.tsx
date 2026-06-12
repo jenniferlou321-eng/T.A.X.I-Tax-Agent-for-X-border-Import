@@ -87,7 +87,7 @@ function buildWelcomeMessage(caseTitle?: string, hasErpData?: boolean): ChatMess
   if (caseTitle) {
     content += `\n\n当前已加载 Case: "${caseTitle}"。`
     content += hasErpData
-      ? 'ERP 数据已就绪 — 使用下方 Quick Action 一键开始。'
+      ? 'ERP 数据已就绪,VRN 和期间信息已在 workspace 中 — 点击下方「分析当前帐套数据」一键开始,无需重复提供 VRN。'
       : 'ERP 数据正在加载中…稍候即可使用 Quick Action。'
   } else {
     content += '\n\n请先在 Dashboard 选择一个 Demo Case,或直接输入您的问题。'
@@ -633,7 +633,7 @@ export default function AgentChatPage() {
         id: generateId(),
         role: 'user',
         content: opts?.caseId
-          ? text + '\n[已加载 Case — workspace 落盘中,后端将通过 Read 工具提供数据]'
+          ? text + '\n[Case 已加载 — VRN/期间/发票数据在 workspace 中,agent 将自动读取]'
           : text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
         timestamp: new Date(),
         status: 'done',

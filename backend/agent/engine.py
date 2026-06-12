@@ -89,9 +89,8 @@ def _build_workspace_reminder(workspace_path: str) -> str:
         return ""
     return (
         f"\n\n[Workspace: {workspace_path}]\n"
-        f"该目录已落盘,内含 manifest/sales/purchases/nine_box 等 JSON。"
-        f"**该路径在整轮会话持续有效**。SDK 模式下用 Read 工具按需读取;"
-        f"Mock 模式下无 Read 工具,LLM 自行从 reminder 推断文件存在性。"
+        f"**先读 manifest.json 获取公司名/VRN/期间,再按需读 sales.json / purchases.json 等。**"
+        f"**该路径在整轮会话持续有效,不要让用户重发数据,不要向用户索要 VRN/期间等已存在于 manifest 的信息。**"
     )
 
 
@@ -208,6 +207,15 @@ class TaxAgentEngine:
         # 缓存 case_id(session 首次拿到后复用,后续轮次不依赖 query string)
         if case_id:
             session._case_id = case_id
+            # 从 case_id 推断管辖地(case-x-uk-* → uk)
+            if not session.jurisdiction:
+                cid_lower = case_id.lower()
+                if "-uk-" in cid_lower or cid_lower.startswith("uk"):
+                    session.jurisdiction = "uk"
+                elif "-cn-" in cid_lower or cid_lower.startswith("cn"):
+                    session.jurisdiction = "cn"
+                elif "-de-" in cid_lower or cid_lower.startswith("de"):
+                    session.jurisdiction = "de"
 
         # 处理管辖地切换
         if jurisdiction:
@@ -222,23 +230,32 @@ class TaxAgentEngine:
             session.line_items = uploaded_data
             yield "📎 已接收上传数据，共 {} 条记录\n".format(len(uploaded_data))
 
-        # 处理原始业务数据 → 落盘到 workspace(不再灌 prompt)
-        if raw_business_data:
-            session.raw_business_data = raw_business_data  # 保留字段(向后兼容)
+        # Workspace 落盘: case_id 存在就落盘(不论是否有 raw_business_data)
+        # 如果只有 case_id 没有 raw_data,ensure_case 内部会从 fixture 加载
+        must_ensure = bool(session._case_id) or bool(raw_business_data)
+        if must_ensure and not session.workspace_path:
             effective_case_id = session._case_id or "default"
             try:
-                session.workspace_path = ensure_case(effective_case_id, raw_business_data)
-                yield f"📎 workspace 已落盘: {session.workspace_path}\n"
+                ws_path, manifest = ensure_case(effective_case_id, raw_business_data)
+                session.workspace_path = ws_path
+                yield f"📂 workspace 已就绪: {ws_path}\n"
+                # 从 manifest 提取 VRN / period(SDK / 业务工具仍要用)
+                if manifest.get("vrn") and not session.taxpayer_id:
+                    session.taxpayer_id = manifest["vrn"]
+                # period_key: 优先取 manifest 的 period_key 字段(从 case_summary.json 来),
+                # 否则取 period 字段(可能是 string 或 dict)
+                if not session.period_key:
+                    if manifest.get("period_key"):
+                        session.period_key = manifest["period_key"]
+                    elif manifest.get("period"):
+                        p = manifest["period"]
+                        session.period_key = p if isinstance(p, str) else str(p)
             except Exception as e:
                 # 落盘失败不阻塞 chat,降级到不附 workspace 路径
                 yield f"⚠️ workspace 落盘失败: {e}\n"
-            # 抽取 taxpayer_id / period_key(SDK / 业务工具仍要用)
-            company = raw_business_data.get("company", {})
-            if company.get("vrn"):
-                session.taxpayer_id = company["vrn"]
-            period_key = (company.get("period") or {}).get("period_key")
-            if period_key:
-                session.period_key = period_key
+        elif raw_business_data:
+            # raw_business_data 有但 workspace 已存在 → 更新 session 字段
+            session.raw_business_data = raw_business_data  # 保留字段(向后兼容)
 
         # 构建增强消息:不再灌数据摘要,只附 workspace reminder
         enriched_message = user_message
@@ -262,6 +279,13 @@ class TaxAgentEngine:
                 system_prompt = get_system_prompt(jurisdiction, tax_type)
             except Exception:
                 system_prompt = "You are T.A.X.I., a helpful tax filing assistant."
+            # httpx 模式没有 Read 工具,但仍告知 workspace 存在(避免索要 VRN)
+            if session.workspace_path:
+                system_prompt += (
+                    "\n\n[Workspace] Case data has been loaded from disk. "
+                    "VRN and period are already available — do NOT ask the user for them. "
+                    "Respond based on the workspace information provided in the message."
+                )
             async for chunk in self._httpx_chat(
                 session=session, user_message=enriched_message, system_prompt=system_prompt,
             ):
@@ -343,10 +367,13 @@ class TaxAgentEngine:
             system_prompt += (
                 "\n\n[Workspace]\n"
                 "Case data is on disk at ~/.taxi/workspace/<case_id>/. "
-                "Files: manifest.json, sales.json, purchases.json, nine_box.json, "
-                "warnings.json, source_meta.json, and source_docs/*.json for invoice-level JSON. "
-                "Use the Read tool to load the file(s) you need — do NOT ask the user to resend data. "
-                "The path remains valid for the entire session."
+                "Files: manifest.json (company name, VRN, period), sales.json, purchases.json, "
+                "nine_box.json, warnings.json, source_meta.json, and source_docs/*.json. "
+                "**CRITICAL: When a workspace path is provided in the user message, you MUST read "
+                "manifest.json FIRST before responding.** It contains VRN, company name, and period — "
+                "never ask the user for this information. After reading manifest, use the Read tool "
+                "to load any other files you need (sales.json, purchases.json, etc.). "
+                "Do NOT ask the user to resend data. The workspace path remains valid for the entire session."
             )
             allowlist = get_allowlist_for(jurisdiction, tax_type)
 
@@ -782,11 +809,17 @@ class TaxAgentEngine:
             return
 
         if "报税" in user_message or "filing" in msg_lower:
-            yield "我来帮您完成英国 VAT 季度申报。"
-            await asyncio.sleep(0.3)
-            yield "\n\n首先，请告诉我您的 VRN（VAT Registration Number），"
-            yield "或者上传您的销售/采购数据文件，"
-            yield "我将自动计算并提交申报。"
+            if session.workspace_path and session.taxpayer_id:
+                yield f"我来帮您完成英国 VAT 季度申报。\n\n"
+                yield f"📋 VRN: {session.taxpayer_id} (从 workspace manifest 读取)\n"
+                yield f"📁 Workspace: {session.workspace_path}\n\n"
+                yield f"Mock 模式无法调用 HMRC API — 请切换到 SDK 模式执行真实申报。"
+            else:
+                yield "我来帮您完成英国 VAT 季度申报。"
+                await asyncio.sleep(0.3)
+                yield "\n\n首先，请告诉我您的 VRN（VAT Registration Number），"
+                yield "或者上传您的销售/采购数据文件，"
+                yield "我将自动计算并提交申报。"
 
         elif "义务" in user_message or "obligations" in msg_lower:
             yield "📋 查询 HMRC 申报义务...\n"
@@ -830,14 +863,26 @@ class TaxAgentEngine:
             session.status = "done"
 
         else:
-            yield "我是 TaxAgent 智能报税助手。\n\n"
-            yield "我可以帮您：\n"
-            yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
-            yield "2. 查询 HMRC 待申报义务\n"
-            yield "3. 验证申报数据合规性\n"
-            yield "4. 提交 VAT Return 至 HMRC\n"
-            yield "5. 查询已提交的申报\n\n"
-            yield "请告诉我您需要什么帮助？"
+            if session.workspace_path:
+                yield "我是 TaxAgent 智能报税助手。\n\n"
+                yield f"📂 已加载 workspace: {session.workspace_path}\n"
+                if session.taxpayer_id:
+                    yield f"📋 VRN: {session.taxpayer_id}\n"
+                yield "\n我可以帮您：\n"
+                yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
+                yield "2. 查询 HMRC 待申报义务\n"
+                yield "3. 验证申报数据合规性\n"
+                yield "4. 提交 VAT Return 至 HMRC\n\n"
+                yield "Mock 模式功能有限 — 请安装 SDK 并配置 API key 获得完整体验。"
+            else:
+                yield "我是 TaxAgent 智能报税助手。\n\n"
+                yield "我可以帮您：\n"
+                yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
+                yield "2. 查询 HMRC 待申报义务\n"
+                yield "3. 验证申报数据合规性\n"
+                yield "4. 提交 VAT Return 至 HMRC\n"
+                yield "5. 查询已提交的申报\n\n"
+                yield "请告诉我您需要什么帮助？"
 
     # ── Helpers ──
 
