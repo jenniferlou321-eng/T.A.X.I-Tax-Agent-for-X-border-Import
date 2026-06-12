@@ -249,6 +249,17 @@ class UKVATAgentToolSet(AgentToolSet):
                     ir = parse_csv(csv_bytes, profile=profile)
                 except CsvParseError as e:
                     return _tool_error(f"CSV parse error: {e}")
+            elif source == "erpnext":
+                from backend.services.erpnext_buffer import get_import_result
+                ir = get_import_result()
+                if ir is None:
+                    return _tool_error(
+                        "no ERPNext data received yet",
+                        detail={
+                            "hint": "submit a Sales/Purchase Invoice in ERPNext "
+                                    "to push data here",
+                        },
+                    )
             else:
                 return _tool_error(f"unknown source: {source!r}")
         except Exception as e:

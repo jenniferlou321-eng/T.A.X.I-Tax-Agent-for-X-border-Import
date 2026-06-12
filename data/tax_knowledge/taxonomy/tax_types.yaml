@@ -1,0 +1,63 @@
+# Tax Type Registry
+#
+# Each entry defines a tax type by a stable machine ID.  Adding a new
+# tax type — for any country — is a pure data change: no Python code
+# touched.  The knowledge loader picks this up at startup.
+#
+# Fields:
+#   id           - stable machine ID (snake_case).  Never rename: it's the
+#                  contract that LLM prompts, tools, and frontends use.
+#   name_en      - canonical English name.
+#   family       - broad tax family for grouping in UIs and analytics:
+#                  consumption | income | payroll | property | transfer
+#   notes        - optional context (free text, supports multi-line).
+- id: vat
+  name_en: Value Added Tax
+  family: consumption
+  notes: |
+    VAT-style consumption tax.  Each implementing country has its own
+    acronym and local name (UK VAT, DE USt, FR TVA, CN 增值税).
+- id: self_assessment
+  name_en: Self Assessment (Personal Income Tax)
+  family: income
+- id: corporation_tax
+  name_en: Corporation Tax / Corporate Income Tax
+  family: income
+- id: income_tax
+  name_en: Personal Income Tax
+  family: income
+  notes: |
+    General income tax (e.g. DE Einkommensteuer, FR impôt sur le revenu,
+    CN 个人所得税).  Use this for non-Self-Assessment personal income
+    regimes; UK SA is its own thing and stays as `self_assessment`.
+- id: trade_tax
+  name_en: Trade Tax (local business tax)
+  family: income
+  notes: |
+    DE Gewerbesteuer and similar municipal surcharges.
+- id: paye
+  name_en: PAYE / Wage Withholding
+  family: payroll
+  notes: |
+    Employer-side withholding (UK PAYE/RTI, DE Lohnsteuer).
+- id: social_security
+  name_en: Social Security / National Insurance
+  family: payroll
+  notes: |
+    UK NIC, DE Sozialversicherung, CN 社保.
+- id: stamp_duty
+  name_en: Stamp Duty / Stamp Tax
+  family: transfer
+  notes: |
+    UK SDLT, FR droits de mutation, CN 印花税 (some categories).
+- id: capital_gains
+  name_en: Capital Gains Tax
+  family: income
+- id: customs_duty
+  name_en: Customs Duty
+  family: consumption
+- id: consumption_tax
+  name_en: Excise / Consumption Tax
+  family: consumption
+  notes: |
+    CN 消费税, UK excise duties (alcohol, tobacco, fuel).

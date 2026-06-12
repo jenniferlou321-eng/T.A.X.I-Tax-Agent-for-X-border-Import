@@ -4,18 +4,25 @@
 - GET  /api/erp/cases/{case_id}      — 加载 demo case → ImportResult
 - POST /api/erp/import               — multipart 上传 CSV
 - POST /api/erp/reconcile            — 调 reconcile 生成差异报告
-- DELETE /api/erp/{import_id}        — 清 in-memory 缓存（v0）
+- POST /api/erp/erpnext/push         — 接收 ERPNext HMAC 签名推送
+- GET  /api/erp/erpnext/status       — ERPNext 连接状态
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 
 from .erp.csv_parser import CsvParseError, parse_csv
 from .erp.erp_samples_loader import DemoCaseNotFoundError, list_demo_cases, load_demo_case
+from .erp.erpnext_connector import payload_to_import_result, validate_signature
 from .erp.reconcile import compute_taxi_nine_box, reconcile
 from .models.erp_models import ImportResult
+from .services.erpnext_buffer import (
+    get_import_result as get_buffered_erpnext,
+    store_import_result as store_erpnext_buffer,
+)
 
 
 router = APIRouter(prefix="/erp", tags=["erp"])
@@ -24,6 +31,11 @@ router = APIRouter(prefix="/erp", tags=["erp"])
 def _to_json(model) -> dict:
     """Serialize a pydantic model to a JSON-safe dict."""
     return model.model_dump(mode="json")
+
+
+def _erpnext_secret() -> str:
+    """Read shared HMAC secret from env (no .env reload for dev)."""
+    return os.environ.get("ERPNEXT_HMAC_SECRET", "")
 
 
 @router.get("/cases")
@@ -73,3 +85,69 @@ def post_reconcile(payload: dict):
     taxi_boxes = compute_taxi_nine_box(ir.sales, ir.purchases)
     delta = reconcile(ir.erp_provided_boxes, taxi_boxes, erp_source=payload.get("erp_source", "unknown"))
     return _to_json(delta)
+
+
+@router.post("/erpnext/push")
+async def erpnext_push(
+    request: Request,
+    x_taxi_signature: str = Header(..., alias="X-TAXI-Signature"),
+    x_taxi_source: Optional[str] = Header(default=None, alias="X-TAXI-Source"),
+):
+    """接收 ERPNext 异步推送的单据数据。
+
+    Headers:
+        X-TAXI-Signature: HMAC-SHA256 of (raw body + secret)
+        X-TAXI-Source:  e.g. "erpnext"
+
+    Body: JSON payload (see erpnext_connector.payload_to_import_result).
+    """
+    body = await request.body()
+    secret = _erpnext_secret()
+    if not secret:
+        raise HTTPException(status_code=500, detail="ERPNEXT_HMAC_SECRET not configured")
+    if not validate_signature(body, x_taxi_signature, secret):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    try:
+        payload = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid JSON: {e}") from e
+
+    try:
+        ir = payload_to_import_result(payload)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"payload error: {e}") from e
+
+    store_erpnext_buffer(ir)
+    return {
+        "status": "ok",
+        "docname": payload.get("docname"),
+        "txn_type": payload.get("txn_type"),
+        "sales": len(ir.sales),
+        "purchases": len(ir.purchases),
+    }
+
+
+@router.get("/erpnext/status")
+def erpnext_status():
+    """ERPNext 连接状态：是否有推过来的数据、最近一次推送时间等。"""
+    ir = get_buffered_erpnext()
+    if ir is None:
+        return {
+            "connected": False,
+            "last_push_at": None,
+            "sales_count": 0,
+            "purchases_count": 0,
+            "docnames": [],
+        }
+    metadata = ir.metadata or {}
+    docnames = [s.id for s in ir.sales] + [p.id for p in ir.purchases]
+    return {
+        "connected": True,
+        "last_push_at": metadata.get("pushed_at"),
+        "sales_count": len(ir.sales),
+        "purchases_count": len(ir.purchases),
+        "docnames": docnames,
+        "company": metadata.get("company"),
+        "source": metadata.get("source"),
+    }

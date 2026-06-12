@@ -45,6 +45,13 @@ interface DemoState {
   selectedPreset: string | null;
   erpConnectionOn: boolean;
 
+  // ── 新增:ERPNext 连接状态(Phase 3 C 路径) ──
+  erpnextStatus: 'idle' | 'connected' | 'disconnected' | 'error';
+  erpnextLastPushAt: string | null;
+  erpnextSalesCount: number;
+  erpnextPurchasesCount: number;
+  erpnextDocnames: string[];
+
   // ── 现状 actions(全部保留) ──
   setSelectedPreset: (preset: string | null) => void;
   setErpConnection: (on: boolean) => void;
@@ -68,6 +75,10 @@ interface DemoState {
   // ── 新增 selectors ──
   isCaseLoaded: () => boolean;
   isMatchingCase: (presetId: string) => boolean;
+
+  // ── 新增:ERPNext actions(Phase 3 C 路径) ──
+  /** 拉一次 /api/erp/erpnext/status 同步到 store。toggle 开启时由组件起轮询。 */
+  refreshErpnextStatus: () => Promise<void>;
 }
 
 /**
@@ -84,10 +95,28 @@ export const useDemoStore = create<DemoState>()(
       // ── 现状字段初值 ──
       selectedPreset: null,
       erpConnectionOn: false,
+
+      // ── ERPNext 状态初值 ──
+      erpnextStatus: 'idle',
+      erpnextLastPushAt: null,
+      erpnextSalesCount: 0,
+      erpnextPurchasesCount: 0,
+      erpnextDocnames: [],
+
       setSelectedPreset: (preset) => set({ selectedPreset: preset }),
       setErpConnection: (on) => set({ erpConnectionOn: on }),
       clearAll: () => {
-        set({ selectedPreset: null, erpConnectionOn: false, buffer: null });
+        set({
+          selectedPreset: null,
+          erpConnectionOn: false,
+          buffer: null,
+          // 关闭 ERPNext 状态
+          erpnextStatus: 'idle',
+          erpnextLastPushAt: null,
+          erpnextSalesCount: 0,
+          erpnextPurchasesCount: 0,
+          erpnextDocnames: [],
+        });
         // 同步清 localStorage(保留现状 ClearDataButton 行为)
         if (typeof window !== 'undefined') {
           try {
@@ -157,6 +186,23 @@ export const useDemoStore = create<DemoState>()(
       // ── selectors ──
       isCaseLoaded: () => get().buffer !== null,
       isMatchingCase: (presetId) => get().buffer?.presetId === presetId,
+
+      // ── ERPNext actions(Phase 3 C 路径) ──
+      refreshErpnextStatus: async () => {
+        try {
+          const { getErpNextStatus } = await import('../api/erpnext');
+          const data = await getErpNextStatus();
+          set({
+            erpnextStatus: data.connected ? 'connected' : 'disconnected',
+            erpnextLastPushAt: data.last_push_at,
+            erpnextSalesCount: data.sales_count,
+            erpnextPurchasesCount: data.purchases_count,
+            erpnextDocnames: data.docnames,
+          });
+        } catch (e) {
+          set({ erpnextStatus: 'error' });
+        }
+      },
     }),
     {
       name: 'taxi:demo-buffer',

@@ -1,0 +1,41 @@
+# Jurisdiction registry — country codes + sub-divisions.
+#
+# This file is loaded at startup.  The CountryCode field maps to the
+# `country:` frontmatter in section files.  `id` (subdivision id) is
+# the `locale` value in section frontmatter.
+#
+# Country-level entries (no subdivision) use id = the ISO 3166-1 alpha-2
+# code.  Countries with sub-divisions include both a country-level
+# default and explicit sub-divisions.
+#
+# Phase 1: 国家级粒度.  Subdivision entries are declared so that
+# future content can target them (e.g. UK/Scotland SDLT), but most
+# sections will reference the country-level id (e.g. "uk") for now.
+- country_code: uk
+  country_name: United Kingdom
+  default_locale: ruk
+  subdivisions:
+    - {id: ruk,  name: "England, Wales & Northern Ireland (default)"}
+    - {id: scot, name: "Scotland"}
+- country_code: de
+  country_name: Germany
+  default_locale: de
+  subdivisions:
+    - {id: de, name: "Bundesgebiet (federal level — default)"}
+    # Future: BY, BW, BE, etc. for state-specific trade-tax multipliers
+- country_code: fr
+  country_name: France
+  default_locale: fr
+  subdivisions:
+    - {id: fr, name: "Métropole + DROM (default)"}
+- country_code: cn
+  country_name: China (Mainland)
+  default_locale: cn
+  subdivisions:
+    - {id: cn,  name: "Mainland China (default)"}
+    # Future: hk (Hong Kong SAR) — separate tax system, not yet in scope
+- country_code: testland
+  country_name: Testland (demo)
+  default_locale: testland
+  subdivisions:
+    - {id: testland, name: "Testland (default)"}

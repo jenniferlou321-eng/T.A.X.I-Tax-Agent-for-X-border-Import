@@ -222,23 +222,16 @@ async def agent_health():
 
 @router.get("/sample-data")
 async def get_sample_data():
-    """获取 TechFlow Distribution Ltd 示例企业数据"""
-    import os
+    """获取 TechFlow 跨境集团示例企业数据（CN 母公司 + UK 子公司）"""
     from pathlib import Path
 
-    # 尝试多个可能的路径（repo-root data/ 优先，其次前端样本）
+    # 单一来源：frontend 资产, 后端为前端兜底也读它（不要在 repo-root data/ 另放副本）
     _root = Path(__file__).resolve().parent.parent.parent
-    paths = [
-        _root / "data" / "realCaseData.json",
-        _root / "frontend" / "src" / "data" / "realCaseData.json",
-    ]
-
-    for p in paths:
-        if p.exists():
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-
-    raise HTTPException(status_code=404, detail="Sample data not found")
+    sample = _root / "frontend" / "src" / "data" / "realCaseData.json"
+    if not sample.is_file():
+        raise HTTPException(status_code=404, detail="Sample data not found")
+    with open(sample, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 # ── 历史会话接口（读取 ~/.claude/projects 下的 SDK 会话文件） ──

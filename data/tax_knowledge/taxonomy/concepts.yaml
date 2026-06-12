@@ -1,0 +1,117 @@
+# Cross-border & cross-tax-type shared concepts.
+#
+# A concept is a piece of tax-law vocabulary that recurs across multiple
+# (country, tax_type) pairs.  Sections can `related_concepts: [eu_b2b]`
+# to mark coverage; the search index boosts cross-linked sections, and
+# the LLM can ask `get_concept_definition(eu_b2b)` to retrieve the
+# canonical definition rather than re-deriving from a single country's
+# view.
+- id: eu_b2b_supply
+  name_en: Intra-EU B2B Supply
+  aliases:
+    en: [EU B2B, intra-EU supply, intra-community supply, EU B2B sale, cross-border B2B in EU]
+    de: [innergemeinschaftliche Lieferung, igL]
+    fr: [livraison intracommunautaire, LI]
+  definition: |
+    A supply of goods from a VAT-registered business in one EU member
+    state to a VAT-registered business in another.  The supply is
+    zero-rated in the origin country, with the customer self-accounting
+    for VAT in their own country (reverse charge).
+  applies_in:
+    - {country: uk, tax_type: vat, note: "Treated like EU B2B for Northern Ireland goods protocol only; rest of UK uses UK VAT rules post-Brexit."}
+    - {country: de, tax_type: vat}
+    - {country: fr, tax_type: vat}
+- id: reverse_charge
+  name_en: Reverse Charge Mechanism
+  aliases:
+    en: [reverse charge, RC, recipient accounting]
+    de: [Umkehr der Steuerschuldnerschaft, Reverse Charge]
+    fr: [autoliquidation, inversion du redevable]
+    zh: [反向收费, 反向征收, 逆算]
+  definition: |
+    The recipient of a supply — not the supplier — accounts for VAT.
+    The supplier issues an invoice without VAT, the recipient declares
+    both output and input VAT (net effect often zero).  Common for
+    cross-border B2B services, intra-EU acquisitions, and certain
+    domestic B2B services (e.g. UK construction CIS, UK mobile phones,
+    DE/FR construction).
+  applies_in:
+    - {country: uk, tax_type: vat}
+    - {country: de, tax_type: vat}
+    - {country: fr, tax_type: vat}
+    - {country: cn, tax_type: vat, note: "Limited applicability; not the default for cross-border B2B."}
+- id: place_of_supply
+  name_en: Place of Supply (Services)
+  aliases:
+    en: [place of supply, POS, where is a service supplied]
+    de: [Ort der sonstigen Leistung]
+    fr: [lieu de prestation]
+  definition: |
+    The jurisdiction in which a service is deemed supplied for VAT
+    purposes.  B2B services default to the customer's country (reverse
+    charge applies); B2C services default to the supplier's country
+    (with carve-outs for digital services → customer country under
+    OSS/IOSS).
+  applies_in:
+    - {country: uk, tax_type: vat}
+    - {country: de, tax_type: vat}
+    - {country: fr, tax_type: vat}
+    - {country: cn, tax_type: vat, note: "Six services taxable in China if consumed in China, regardless of supplier location."}
+- id: transfer_pricing
+  name_en: Transfer Pricing
+  aliases:
+    en: [transfer pricing, TP, related party pricing]
+    de: [Verrechnungspreise]
+    fr: [prix de transfert]
+    zh: [转让定价]
+  definition: |
+    The pricing of transactions between associated enterprises.  Must
+    follow the arm's length principle (OECD Model).  Affects
+    corporation tax / corporate income tax in essentially every
+    country.
+  applies_in:
+    - {country: uk, tax_type: corporation_tax}
+    - {country: de, tax_type: corporate_income_tax}
+    - {country: fr, tax_type: corporate_income_tax}
+    - {country: cn, tax_type: corporate_income_tax, note: "SAT has issued extensive TP documentation rules (e.g. State Administration of Taxation Announcement 6/2016)."}
+- id: bad_debt_relief
+  name_en: Bad Debt Relief
+  aliases:
+    en: [bad debt relief, BDR, VAT on bad debts]
+  definition: |
+    Reclaim of VAT already paid to HMRC where the customer has not
+    paid and the debt is more than six months old.  Affects UK VAT
+    Box 4.
+  applies_in:
+    - {country: uk, tax_type: vat}
+- id: flat_rate_scheme
+  name_en: Flat Rate Scheme
+  aliases:
+    en: [FRS, flat rate VAT, flat rate scheme]
+  definition: |
+    Simplified VAT scheme for small UK businesses — pay a fixed
+    percentage of turnover regardless of actual input VAT.
+  applies_in:
+    - {country: uk, tax_type: vat}
+- id: marginal_relief
+  name_en: Marginal Relief
+  aliases:
+    en: [marginal relief, marginal rate corporation tax]
+  definition: |
+    Smoothing mechanism between two corporation tax rates (e.g. UK
+    19% small profits and 25% main rate).  Applies between £50,000
+    and £250,000 of profits (UK FY2024, with associated-company
+    adjustments).
+  applies_in:
+    - {country: uk, tax_type: corporation_tax}
+- id: oss_ioss
+  name_en: One-Stop Shop / Import One-Stop Shop
+  aliases:
+    en: [OSS, IOSS, union OSS, non-union OSS, import OSS]
+  definition: |
+    EU schemes allowing a single VAT registration in one member state
+    to cover distance sales of goods / cross-border B2C services to
+    consumers across the EU.
+  applies_in:
+    - {country: de, tax_type: vat}
+    - {country: fr, tax_type: vat}

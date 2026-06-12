@@ -137,5 +137,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ import_result: importResult, erp_source: erpSource }),
       }),
+    erpnextStatus: () =>
+      fetchApi<{
+        connected: boolean;
+        last_push_at: string | null;
+        sales_count: number;
+        purchases_count: number;
+        docnames: string[];
+        company?: string | null;
+        source?: string | null;
+      }>('/api/erp/erpnext/status'),
   },
 };
