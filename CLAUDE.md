@@ -197,6 +197,20 @@ LLM-facing field names (`vrn`, `period_key`, etc.) are mapped to the internal `t
 - Session listing: `/api/agent/sessions` (reads SDK's JSONL files)
 - Health: `/api/agent/health`
 
+### SDK 调研 Subagent(项目级)
+- 定义:`.claude/agents/claude-sdk-docs-researcher.md` — 通过 `Agent` 工具用 `subagent_type="general-purpose"` 派发
+- 本地文档镜像:`docs/superpowers/reference/code-claude-com/agent-sdk/markdown/`(30 页,~650 KB,从 `https://code.claude.com/docs/en/agent-sdk` 抓取)
+- SDK 源码:`$HOME/miniconda3/envs/taxagent/lib/python3.11/site-packages/claude_agent_sdk/`(v0.2.95 / CLI 2.1.170)
+- 抓取脚本:`scripts/crawl_agent_sdk_docs.sh`(SDK 升级或文档改版时重跑)
+- **硬规则**:任何关于 `claude-agent-sdk` 的问题(query / ClaudeSDKClient / hooks / MCP / subagents / sessions / permissions / structured outputs / cost tracking / 等等)→ **必须派发该 subagent 调研,不许凭记忆回答**。subagent 给出的每条 API 声明都 cite 本地 mirror 或 SDK 源码的 file:line,可直接采信。
+- 网络注意:`WebFetch` 工具拒收 `code.claude.com` 域名,subagent 内部用 `curl` 拉缺页。
+
+### SDK 合规性审查(2026-06-12)
+- **报告**:`docs/superpowers/audit/2026-06-12-sdk-audit.md`(19 finding, 2 critical / 5 high / 6 medium / 6 nit;**总评 B-**)
+- **Top-5 待修**(按 ROI):(1) `ToolAnnotations` 标 destructiveHint/readOnlyHint 修 C2;(2) PreToolUse/PostToolUse hooks 修 C1 部分 + H1 + H3;(3) OTEL env 修 H4;(4) `model_usage` 累加修 H5;(5) `session_store` 改用 SDK 公开 API(`list_sessions` / `get_session_messages`)修 H2
+- **C1 完整修复前置**:`routers/agent.py` WS 端点必须改成 `AsyncIterable[dict]` 喂 `client.query()` — `claude_agent_sdk/client.py:173-180` 拒绝 `can_use_tool` + string prompt 组合。属 3-4 天大改,建议独立 PR
+- **下次复审触发**:`claude-agent-sdk` 升级 / 后端 SDK 集成层有改动 / Phase 3 重构时
+
 ---
 
 ## Models
@@ -225,6 +239,8 @@ Import from `backend.models`.
 | **Deploy frontend on port 9000 with public access** | [`docs/deployment/port-9000.md`](./docs/deployment/port-9000.md) — covers Vite proxy config, the `serve_frontend_9000.sh` static server, and Cloudflare Tunnel / nginx recipes. |
 | **Add CSV profile** | `backend/erp/profiles.py` (新 class + 注册到 `_PROFILES`) |
 | **Add demo case** | 写 JSON 到 `data/erp_samples/<id>.json` |
+| **Ask about `claude-agent-sdk`** | **派发** `claude-sdk-docs-researcher` subagent(见上),不许凭记忆答 |
+| **Re-audit SDK compliance** | SDK 升级 / `backend/agent/` 改动后重跑, 报告模板见 `docs/superpowers/audit/2026-06-12-sdk-audit.md` |
 
 ---
 
