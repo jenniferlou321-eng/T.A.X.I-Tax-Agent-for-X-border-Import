@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
@@ -22,10 +23,15 @@ class ErpNextPullError(Exception):
 
 
 def json_fields(doctype: str) -> str:
-    common = '["name", "posting_date", "net_total", "total_taxes_and_charges", "grand_total", "docstatus", "is_return", "return_against"]'
+    fields = [
+        "name", "posting_date", "net_total", "total_taxes_and_charges",
+        "grand_total", "docstatus", "is_return", "return_against",
+    ]
     if doctype == "Sales Invoice":
-        return common.replace("]", ', "customer_name"]')
-    return common.replace("]", ', "supplier_name"]')
+        fields.append("customer_name")
+    else:
+        fields.append("supplier_name")
+    return json.dumps(fields)
 
 
 async def pull_invoices(
@@ -54,7 +60,7 @@ async def pull_invoices(
     filters.append(["docstatus", "in", [1, 2]])
 
     params = {
-        "filters": str(filters).replace("'", '"'),  # ERPNext 期望 JSON 字符串
+        "filters": json.dumps(filters),  # ERPNext 期望 JSON 字符串
         "limit_page_length": 500,
         "fields": json_fields(doctype),
     }
@@ -77,7 +83,13 @@ async def pull_invoices(
             status_code=resp.status_code,
         )
 
-    payload = resp.json()
+    try:
+        payload = resp.json()
+    except ValueError as e:
+        raise ErpNextPullError(
+            f"ERPNext returned invalid JSON: {resp.text[:200]}",
+            status_code=resp.status_code,
+        ) from e
     docs = payload.get("data", [])
     return [_to_hub_invoice(d, doctype) for d in docs]
 

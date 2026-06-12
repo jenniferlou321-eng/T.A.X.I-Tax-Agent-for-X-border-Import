@@ -158,3 +158,20 @@ async def test_pull_401_raises(httpx_mock):
             period_start=date(2026, 1, 1), period_end=date(2026, 3, 31),
         )
     assert exc_info.value.status_code == 401
+
+
+async def test_pull_malformed_json_raises(httpx_mock):
+    """ERPNext returns 200 but invalid JSON body → ErpNextPullError."""
+    from backend.erp.erpnext_pull import pull_invoices, ErpNextPullError
+    httpx_mock.add_response(
+        method="GET",
+        url=SALES_URL,
+        content=b"<html>500 Internal Server Error</html>",
+        status_code=200,
+    )
+    with pytest.raises(ErpNextPullError):
+        await pull_invoices(
+            base_url="http://erp.test:8000",
+            api_key="k", api_secret="s",
+            period_start=date(2026, 1, 1), period_end=date(2026, 3, 31),
+        )
