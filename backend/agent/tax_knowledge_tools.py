@@ -6,6 +6,7 @@ from typing import Optional
 
 from backend.models.agent_tools import AgentToolSet
 from backend.agent.tax_knowledge_store import TaxKnowledgeStore
+from backend.models.jurisdictions import is_valid_jurisdiction
 
 
 def _tool_ok(data: dict) -> dict:
@@ -49,16 +50,46 @@ class TaxKnowledgeAgentToolSet(AgentToolSet):
         return _tool_ok({"success": True, "jurisdiction": jurisdiction, "tax_type": tax_type, "query": query, "results": results})
 
     async def get_tax_rates(self, jurisdiction: str, tax_type: str, year: Optional[str] = None) -> dict:
+        """从 KB 读 ## Rates 段。
+
+        数据驱动: 不再硬编码 if/elif。新国家在 data/tax_knowledge/{cc}/{tax}.md
+        加 ## Rates 段后,本工具自动支持。
+        """
         if not jurisdiction or not tax_type:
             return _tool_error("jurisdiction and tax_type are required")
-        rates = {}
-        if jurisdiction == "uk" and tax_type == "vat":
-            rates = {"standard": 0.20, "reduced": 0.05, "zero": 0.00}
-        elif jurisdiction == "uk" and tax_type == "corporation_tax":
-            rates = {"small_profits_rate": 0.19, "main_rate": 0.25}
-        else:
-            rates = {"note": f"Rate table not yet available for {jurisdiction}/{tax_type}"}
-        return _tool_ok({"success": True, "jurisdiction": jurisdiction, "tax_type": tax_type, "year": year, "rates": rates})
+        if not is_valid_jurisdiction(jurisdiction, tax_type):
+            return _tool_error(
+                f"Unknown jurisdiction={jurisdiction!r} or tax_type={tax_type!r}"
+            )
+        section = self.store.get_section(jurisdiction, tax_type, "Rates")
+        if section is None:
+            return _tool_ok({
+                "success": True,
+                "jurisdiction": jurisdiction,
+                "tax_type": tax_type,
+                "year": year,
+                "rates": {"note": f"Rate table not yet available for {jurisdiction}/{tax_type}"},
+            })
+        # 解析 section.content 里的 ```json ... ``` 块
+        import re
+        m = re.search(r"```json\s*(\{.*?\})\s*```", section.content, re.DOTALL)
+        if m is None:
+            # 段存在但无 JSON 块(SA / PAYE 等按 band 征税)
+            return _tool_ok({
+                "success": True,
+                "jurisdiction": jurisdiction,
+                "tax_type": tax_type,
+                "year": year,
+                "rates": {"note": f"{tax_type} uses banded rates; see KB ## Bands section"},
+            })
+        rates = json.loads(m.group(1))
+        return _tool_ok({
+            "success": True,
+            "jurisdiction": jurisdiction,
+            "tax_type": tax_type,
+            "year": year,
+            "rates": rates,
+        })
 
     async def list_supported_jurisdictions(self) -> dict:
         supported = self.store.list_supported()

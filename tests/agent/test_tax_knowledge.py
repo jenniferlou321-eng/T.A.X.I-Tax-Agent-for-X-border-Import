@@ -139,3 +139,49 @@ def test_prompt_mentions_tax_kb_subagent():
     prompt = get_system_prompt("uk", "vat")
     assert "tax_kb_researcher" in prompt
     assert "get_tax_rates" in prompt
+
+
+@pytest.mark.asyncio
+async def test_get_tax_rates_uk_vat_reads_from_kb():
+    """UK VAT 走 KB ## Rates 段,不再硬编码 0.20。"""
+    from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+    tools = TaxKnowledgeAgentToolSet()
+    r = await tools.get_tax_rates("uk", "vat")
+    body = json.loads(r["content"][0]["text"])
+    assert body["success"] is True
+    assert body["rates"]["standard"] == 0.20
+    assert body["rates"]["reduced"] == 0.05
+
+
+@pytest.mark.asyncio
+async def test_get_tax_rates_de_vat_falls_back():
+    """de vat 无 ## Rates 段,返回 'not yet available' note。"""
+    from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+    tools = TaxKnowledgeAgentToolSet()
+    r = await tools.get_tax_rates("de", "vat")
+    body = json.loads(r["content"][0]["text"])
+    assert body["success"] is True
+    # 段缺失 → note 字段
+    if "note" not in body["rates"]:
+        pytest.fail(f"expected 'note' fallback for de/vat, got {body['rates']}")
+
+
+@pytest.mark.asyncio
+async def test_get_tax_rates_unknown_cc_returns_error():
+    """未知 cc 返回 _tool_error(严)。"""
+    from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+    tools = TaxKnowledgeAgentToolSet()
+    r = await tools.get_tax_rates("xx", "vat")
+    body = json.loads(r["content"][0]["text"])
+    assert body["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_tax_rates_testland_vat_reads_from_kb():
+    """Testland vat 走 KB(0.21 标准税率)。"""
+    from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+    tools = TaxKnowledgeAgentToolSet()
+    r = await tools.get_tax_rates("testland", "vat")
+    body = json.loads(r["content"][0]["text"])
+    assert body["success"] is True
+    assert body["rates"]["standard"] == 0.21
