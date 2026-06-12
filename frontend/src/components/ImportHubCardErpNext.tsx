@@ -18,9 +18,11 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
   const [showCreds, setShowCreds] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingPull, setPendingPull] = useState(false);
 
   const handlePull = async () => {
     if (!credentials) {
+      setPendingPull(true);
       setShowCreds(true);
       return;
     }
@@ -50,10 +52,17 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
   };
 
   return (
-    <div className="card p-4">
+    <div className="card p-4" data-testid="import-hub-card-erpnext">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-medium">📥 从 ERPNext 导入</h3>
-        <button onClick={() => setShowCreds(true)} className="text-xs text-fg-dim hover:text-fg">
+        <button
+          onClick={() => {
+            setPendingPull(false);
+            setShowCreds(true);
+          }}
+          className="text-xs text-fg-dim hover:text-fg"
+          data-testid="import-hub-config-credentials"
+        >
           {credentials ? '✏️ 修改凭证' : '⚙️ 配置凭证'}
         </button>
       </div>
@@ -75,6 +84,7 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
         onClick={handlePull}
         disabled={pulling}
         className="btn-primary mt-3 w-full"
+        data-testid="import-hub-pull"
       >
         {pulling ? '拉取中...' : '🔄 拉取本季度'}
       </button>
@@ -89,6 +99,10 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
           onSave={(creds) => {
             setCredentials(creds);
             setShowCreds(false);
+            if (pendingPull) {
+              setPendingPull(false);
+              handlePull();
+            }
           }}
           onClose={() => setShowCreds(false)}
         />
