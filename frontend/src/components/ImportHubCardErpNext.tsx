@@ -37,6 +37,7 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
         period_start: periodStart,
         period_end: periodEnd,
       });
+      // 先用 pull 响应里的 count 立刻更新 UI(快路径)。
       setHubSummary(period, {
         salesCount: result.sales,
         purchasesCount: result.purchases,
@@ -44,6 +45,20 @@ export default function ImportHubCardErpNext({ period, periodStart, periodEnd }:
         amendsCount: result.amends,
         lastPulledAt: new Date().toISOString(),
       });
+      // 再从后端 ImportHubStore 拉一次 canonical count(按 docname dedup),
+      // 避免前端累加导致重复 — 这是 source of truth,覆盖上面的快路径值。
+      try {
+        const summary = await api.erp.erpnextHubSummary(period);
+        setHubSummary(period, {
+          salesCount: summary.count.sales,
+          purchasesCount: summary.count.purchases,
+          cancelledCount: summary.count.cancelled,
+          amendsCount: summary.count.amends,
+          lastPulledAt: new Date().toISOString(),
+        });
+      } catch {
+        // canonical count 拉不到,保留快路径的值
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {

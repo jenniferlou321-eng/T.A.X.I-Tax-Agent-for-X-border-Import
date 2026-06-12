@@ -17,13 +17,29 @@ export default function ImportHubCardCsv({ period }: Props) {
     try {
       const ir = await api.erp.importCsv(file, 'erpnext_export');
       setLastResult(`✓ ${file.name} · ${ir.sales.length} 销售 + ${ir.purchases.length} 采购`);
-      setHubSummary(period, {
-        salesCount: ir.sales.length,
-        purchasesCount: ir.purchases.length,
-        cancelledCount: 0,
-        amendsCount: 0,
-        lastPulledAt: new Date().toISOString(),
-      });
+
+      // 上传后从 backend 拉取 canonical count(后端 ImportHubStore 按 docname dedup)。
+      // 避免在本地累加(可能和已有数据重复,会算错)。
+      try {
+        const data = await api.erp.erpnextHubSummary(period);
+        setHubSummary(period, {
+          salesCount: data.count.sales,
+          purchasesCount: data.count.purchases,
+          cancelledCount: data.count.cancelled,
+          amendsCount: data.count.amends,
+          lastPulledAt: new Date().toISOString(),
+        });
+      } catch {
+        // 拉 canonical count 失败时,降级用本次上传的行数(可能有重复,
+        // 但至少按钮能点、UI 不卡住)。
+        setHubSummary(period, {
+          salesCount: ir.sales.length,
+          purchasesCount: ir.purchases.length,
+          cancelledCount: 0,
+          amendsCount: 0,
+          lastPulledAt: new Date().toISOString(),
+        });
+      }
     } catch (e: any) {
       setLastResult(`❌ ${e.message}`);
     } finally {
