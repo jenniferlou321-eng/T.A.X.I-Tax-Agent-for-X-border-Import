@@ -19,6 +19,7 @@ from .erp.csv_parser import CsvParseError, parse_csv
 from .erp.erp_samples_loader import DemoCaseNotFoundError, list_demo_cases, load_demo_case
 from .erp.erpnext_connector import payload_to_import_result, validate_signature
 from .erp import erpnext_pull
+from .erp.hub_to_txn import hub_invoices_to_txn
 from .erp.reconcile import compute_taxi_nine_box, reconcile
 from .models.erp_models import ImportResult
 from .services.erpnext_buffer import (
@@ -215,29 +216,17 @@ async def post_erpnext_pull(payload: dict):
 
 @router.get("/hub/summary")
 def hub_summary(period: str):
-    """取本 period 的 ImportHubStore 摘要(发票列表 + 计数)。"""
-    from .models.erp_models import SalesTransaction, PurchaseTransaction
+    """取本 period 的 ImportHubStore 摘要(发票列表 + 计数)。
+
+    `sales` / `purchases` 字段是过滤 cancelled 后的 active 发票(可用于 9-Box 计算);
+    `raw` 包含所有 HubInvoice(含 cancelled / amend),仅用于 Preview 表格展示。
+    """
     items = ImportHubStore.list(period)
-    sales = [
-        SalesTransaction(
-            id=i.id, txn_date=i.txn_date, counterparty=i.counterparty,
-            net_amount=i.net_amount, vat_amount=i.vat_amount, gross_amount=i.gross_amount,
-            vat_rate=i.vat_rate, tax_code=i.tax_code,
-        )
-        for i in items if not i.cancelled and i.id.startswith("S")
-    ]
-    purchases = [
-        PurchaseTransaction(
-            id=i.id, txn_date=i.txn_date, counterparty=i.counterparty,
-            net_amount=i.net_amount, vat_amount=i.vat_amount, gross_amount=i.gross_amount,
-            vat_rate=i.vat_rate, tax_code=i.tax_code,
-        )
-        for i in items if not i.cancelled and i.id.startswith("P")
-    ]
+    sales, purchases = hub_invoices_to_txn(items, filter_cancelled=True)
     return {
         "period": period,
         "sales": [s.model_dump(mode="json") for s in sales],
         "purchases": [p.model_dump(mode="json") for p in purchases],
         "count": ImportHubStore.count(period),
-        "raw": [i.model_dump(mode="json") for i in items],  # 含 cancelled / amend
+        "raw": [i.model_dump(mode="json") for i in items],
     }
