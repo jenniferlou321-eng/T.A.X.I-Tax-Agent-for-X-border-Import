@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { CasePreset } from '../data/casePresets';
+import { casePresets, type CasePreset } from '../data/casePresets';
 import type { ImportResult } from '../types';
+
+/** 按 period 隔离的 hub 数据摘要(从 erp_samples loader 拉到的元数据)。 */
+export interface HubSummary {
+  salesCount: number;
+  purchasesCount: number;
+  cancelledCount: number;
+  amendsCount: number;
+  lastPulledAt: string | null;
+}
 
 /**
  * Working Buffer — 当前用户正在处理的 case 的完整快照。
@@ -60,29 +69,14 @@ interface DemoState {
   } | null;
 
   // ── 新增:按 period 隔离的 hub 数据摘要 ──
-  hubDataByPeriod: Record<string, {
-    salesCount: number;
-    purchasesCount: number;
-    cancelledCount: number;
-    amendsCount: number;
-    lastPulledAt: string | null;
-  }>;
+  hubDataByPeriod: Record<string, HubSummary>;
 
   // ── 现状 actions(全部保留) ──
   setSelectedPreset: (preset: string | null) => void;
   setErpConnection: (on: boolean) => void;
   clearAll: () => void;
   setErpnextCredentials: (creds: { url: string; apiKey: string; apiSecret: string } | null) => void;
-  setHubDataForPeriod: (
-    period: string,
-    summary: {
-      salesCount: number;
-      purchasesCount: number;
-      cancelledCount: number;
-      amendsCount: number;
-      lastPulledAt: string;
-    }
-  ) => void;
+  setHubDataForPeriod: (period: string, summary: HubSummary) => void;
 
   // ── 新增:working buffer ──
   buffer: CaseWorkingBuffer | null;
@@ -115,6 +109,23 @@ interface DemoState {
 function defaultNineBoxFromPreset(preset: CasePreset): Record<string, number> {
   return Object.fromEntries(preset.lineItems.map((li) => [li.category, li.amount]));
 }
+
+/**
+ * store 的 default 状态。v1 → v2 迁移时直接 spread,丢掉老 ID。
+ * 以后加新字段时,只需要在这里加一次,migrate 不用动。
+ */
+const DEFAULT_DEMO_STATE = {
+  selectedPreset: null,
+  erpConnectionOn: false,
+  buffer: null,
+  erpnextStatus: 'idle' as const,
+  erpnextLastPushAt: null,
+  erpnextSalesCount: 0,
+  erpnextPurchasesCount: 0,
+  erpnextDocnames: [] as string[],
+  erpnextCredentials: null,
+  hubDataByPeriod: {} as Record<string, HubSummary>,
+};
 
 export const useDemoStore = create<DemoState>()(
   persist(
@@ -269,13 +280,7 @@ export const useDemoStore = create<DemoState>()(
       migrate: (persistedState, version) => {
         if (version < 2) {
           // 旧 ID 全部 discard(standard-taxable / real-business-q1 / net-refund / zero-filing)
-          return {
-            selectedPreset: null,
-            erpConnectionOn: false,
-            buffer: null,
-            erpnextCredentials: null,
-            hubDataByPeriod: {},
-          } as any;
+          return { ...DEFAULT_DEMO_STATE } as any;
         }
         if (version < 3) {
           // 补默认值
@@ -295,7 +300,7 @@ export const useDemoStore = create<DemoState>()(
           state.selectedPreset = state.buffer.presetId;
         }
         // 防御:若 buffer 指向已废弃的 preset id,清掉
-        const validIds = ['case-x-uk-standard', 'case-a-uk-subsidiary', 'case-b-cn-parent'];
+        const validIds = casePresets.map((p) => p.id);
         if (state.buffer && !validIds.includes(state.buffer.presetId)) {
           state.buffer = null;
           state.selectedPreset = null;
