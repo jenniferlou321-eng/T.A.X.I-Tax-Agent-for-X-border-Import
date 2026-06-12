@@ -9,7 +9,7 @@ from typing import List, Tuple
 from ..models.erp_models import (
     ImportResult, SalesTransaction, PurchaseTransaction,
 )
-from .profiles import GenericProfile, REQUIRED_COLUMNS
+from .profiles import GenericProfile, _PROFILES, REQUIRED_COLUMNS
 from .reconcile import compute_taxi_nine_box
 
 
@@ -17,7 +17,8 @@ class CsvParseError(ValueError):
     """Header-level CSV 错误（不是单行错误）"""
 
 
-_PROFILES = {"generic": GenericProfile()}
+# _PROFILES is imported from .profiles (single source of truth — includes
+# GenericProfile and ERPNextExportProfile).
 
 
 def detect_profile(headers: List[str]) -> Tuple[str, float]:
