@@ -87,3 +87,26 @@ T.A.X.I. v1 ERPNext 接入改为**手动 Pull 模式**:
 访问 `http://my.local:9001/taxi-link` → 301 → `/taxi-link/new` → 200 OK,X-Page-Name=`taxi-link/new`。显示 TAXI URL 字段 + 简介文字 + 提交按钮。
 
 注意: 这个 Web Form `is_standard=0`,意味着它**不会**作为 fixture 在 `bench migrate` 时被自动重装(只有 `is_standard=1` 的会被 fixtures 机制导出/导入)。如果未来需要重装站点,要手动跑 8 行 Python 重新创建。
+
+## 1-Click Auto-Login (2026-06-13)
+
+**开启** `common_site_config.json` 加 `"developer_mode": 1` + `tax_integration` app 的 `www/welcome.py::login_as_admin` 端点(developer_mode-only)。
+
+**用户流**:
+1. 访问 `http://my.local:9001/` → 看到欢迎页
+2. 点击"🚀 进入 ERPNext"按钮 → 后端 `LoginManager.login_as("Administrator")` 免密登录 → 302 → `/app` → 200 OK
+3. 用户已经在 ERPNext Desk 内部
+
+**验证**:
+- `curl /api/method/tax_integration.www.welcome.login_as_admin` → 302 + `Set-Cookie: sid=...`
+- 用 sid 访问 `/app` → HTTP 200, `X-Page-Name: app`
+- `frappe.auth.get_logged_user` → `"Administrator"`
+
+**安全 trade-off**:
+- ✅ 优点: 1-click 进 desk,演示/开发零摩擦
+- ❌ 风险: `developer_mode=1` 期间,**任何公网访问者**点 1 下都能以 Administrator 身份进 ERPNext
+- 🔒 缓解: `developer_mode=0` 时端点主动抛 `PermissionError`;生产前要么关掉 `developer_mode`,要么删 `login_as_admin` 函数
+
+**关闭方法**:
+- 选项 A: `common_site_config.json` 设 `"developer_mode": 0` (端点拒绝访问,欢迎页自动退回 "🔐 登录" 按钮)
+- 选项 B: 直接删除 `tax_integration/www/welcome.py` 中的 `login_as_admin` 函数
