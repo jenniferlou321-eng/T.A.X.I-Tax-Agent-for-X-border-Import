@@ -52,10 +52,37 @@ interface DemoState {
   erpnextPurchasesCount: number;
   erpnextDocnames: string[];
 
+  // ── 新增:ERPNext 凭证(明文,本期 demo 限制) ──
+  erpnextCredentials: {
+    url: string;
+    apiKey: string;
+    apiSecret: string;
+  } | null;
+
+  // ── 新增:按 period 隔离的 hub 数据摘要 ──
+  hubDataByPeriod: Record<string, {
+    salesCount: number;
+    purchasesCount: number;
+    cancelledCount: number;
+    amendsCount: number;
+    lastPulledAt: string | null;
+  }>;
+
   // ── 现状 actions(全部保留) ──
   setSelectedPreset: (preset: string | null) => void;
   setErpConnection: (on: boolean) => void;
   clearAll: () => void;
+  setErpnextCredentials: (creds: { url: string; apiKey: string; apiSecret: string } | null) => void;
+  setHubDataForPeriod: (
+    period: string,
+    summary: {
+      salesCount: number;
+      purchasesCount: number;
+      cancelledCount: number;
+      amendsCount: number;
+      lastPulledAt: string;
+    }
+  ) => void;
 
   // ── 新增:working buffer ──
   buffer: CaseWorkingBuffer | null;
@@ -103,6 +130,12 @@ export const useDemoStore = create<DemoState>()(
       erpnextPurchasesCount: 0,
       erpnextDocnames: [],
 
+      // ── ERPNext 凭证初值 ──
+      erpnextCredentials: null,
+
+      // ── 按 period 隔离的 hub 数据初值 ──
+      hubDataByPeriod: {},
+
       setSelectedPreset: (preset) => set({ selectedPreset: preset }),
       setErpConnection: (on) => set({ erpConnectionOn: on }),
       clearAll: () => {
@@ -116,6 +149,10 @@ export const useDemoStore = create<DemoState>()(
           erpnextSalesCount: 0,
           erpnextPurchasesCount: 0,
           erpnextDocnames: [],
+          // 清除 ERPNext 凭证
+          erpnextCredentials: null,
+          // 清除 hub 数据
+          hubDataByPeriod: {},
         });
         // 同步清 localStorage(保留现状 ClearDataButton 行为)
         if (typeof window !== 'undefined') {
@@ -203,10 +240,19 @@ export const useDemoStore = create<DemoState>()(
           set({ erpnextStatus: 'error' });
         }
       },
+
+      // ── ERPNext 凭证 actions(Import Hub) ──
+      setErpnextCredentials: (creds) => set({ erpnextCredentials: creds }),
+
+      // ── Hub 数据 actions(按 period 隔离) ──
+      setHubDataForPeriod: (period, summary) =>
+        set((state) => ({
+          hubDataByPeriod: { ...state.hubDataByPeriod, [period]: summary },
+        })),
     }),
     {
       name: 'taxi:demo-buffer',
-      version: 1,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       // 持久化 buffer + selectedPreset(同步)+ erpConnectionOn
       // action 函数不持久化
@@ -214,19 +260,45 @@ export const useDemoStore = create<DemoState>()(
         buffer: state.buffer,
         selectedPreset: state.selectedPreset,
         erpConnectionOn: state.erpConnectionOn,
+        erpnextCredentials: state.erpnextCredentials,
+        hubDataByPeriod: state.hubDataByPeriod,
       }),
-      // 持久化版本升级时(本期无 v2,只是预防):旧数据清掉
+      // 持久化版本升级时:
+      //   v1 → v2:case 精简后 preset ID 改名,旧 buffer.preset.id 失效,直接 discard
+      //   v2 → v3:补全新增的 erpnextCredentials / hubDataByPeriod 字段(老数据里没有)
       migrate: (persistedState, version) => {
-        if (version < 1) {
-          // 旧版本数据无 buffer,丢弃避免不一致
-          return { selectedPreset: null, erpConnectionOn: false, buffer: null } as any;
+        if (version < 2) {
+          // 旧 ID 全部 discard(standard-taxable / real-business-q1 / net-refund / zero-filing)
+          return {
+            selectedPreset: null,
+            erpConnectionOn: false,
+            buffer: null,
+            erpnextCredentials: null,
+            hubDataByPeriod: {},
+          } as any;
+        }
+        if (version < 3) {
+          // 补默认值
+          return {
+            ...(persistedState as any),
+            erpnextCredentials: (persistedState as any).erpnextCredentials ?? null,
+            hubDataByPeriod: (persistedState as any).hubDataByPeriod ?? {},
+          };
         }
         return persistedState as any;
       },
       // 重水化后:若 buffer 存在但 selectedPreset 缺失(老数据/手动改),补齐
+      // 还要校验 buffer.preset.id 是否是当前 casePresets 里的有效 ID
       onRehydrateStorage: () => (state) => {
-        if (state?.buffer && !state.selectedPreset) {
+        if (!state) return;
+        if (state.buffer && !state.selectedPreset) {
           state.selectedPreset = state.buffer.presetId;
+        }
+        // 防御:若 buffer 指向已废弃的 preset id,清掉
+        const validIds = ['case-x-uk-standard', 'case-a-uk-subsidiary', 'case-b-cn-parent'];
+        if (state.buffer && !validIds.includes(state.buffer.presetId)) {
+          state.buffer = null;
+          state.selectedPreset = null;
         }
       },
     }
