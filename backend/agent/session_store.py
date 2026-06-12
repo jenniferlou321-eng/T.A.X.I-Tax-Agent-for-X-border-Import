@@ -1,220 +1,157 @@
-"""Session Store — 读取 ~/.claude/projects 下的 SDK 会话历史
+"""Session Store — 读取 SDK 会话历史 (Public API 包装)
 
-claude-agent-sdk 自动将会话保存为 .jsonl 文件:
-    ~/.claude/projects/<project-dir>/<session_id>.jsonl
+依赖 claude-agent-sdk 0.2.95+ 公开 API:
+    - list_sessions(directory=None, limit=None, offset=0, include_worktrees=True)
+    - get_session_messages(session_id, directory=None, limit=None, offset=0)
+    - delete_session(session_id, directory=None)
+    - project_key_for_directory 间接使用 — 通过 directory=cwd 传参
 
-每条记录是一个 JSON 对象，包含 type, message, attachment 等字段。
+底层 SDK 把会话存 ~/.claude/projects/<project_key>/<session_id>.jsonl,
+我们不直接拼 project_key,避开路径清洗/列表扫描。
 """
-
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any
+
+import claude_agent_sdk  # noqa: F401  (用于 raise 异常捕获)
+from claude_agent_sdk import (
+    delete_session as _sdk_delete_session,
+    get_session_messages as _sdk_get_session_messages,
+    list_sessions as _sdk_list_sessions,
+)
 
 
-def _get_project_dir() -> str:
-    """找到当前项目对应的 .claude/projects 目录。
+# ── helpers ──
 
-    路径格式: ~/.claude/projects/-Users-gtc-Learning------finalreport-tax-agent
+def _ms_to_iso(ms: int | None) -> str:
+    """SDK 传回毫秒时间戳 (last_modified / created_at),前端期望 ISO 字符串。"""
+    if not ms:
+        return ""
+    try:
+        return datetime.utcfromtimestamp(ms / 1000).isoformat() + "Z"
+    except (ValueError, TypeError, OSError):
+        return ""
+
+
+def _flatten_user_content(raw_content: Any) -> list[dict]:
+    """把 SessionMessage.message['content'] 拍平成 UI 消息列表。
+
+    入参: str 或 list[content block] (Anthropic API 格式)
+    出参: 0~2 个 {role, content, timestamp} 元素
+        - user/assistant: 直接一条
+        - tool_result: 合成一条 role="tool"
     """
-    base = os.path.expanduser("~/.claude/projects")
-    cwd = os.getcwd()
-    # 将路径中的 / 替换为 -，去掉开头的 -
-    sanitized = cwd.replace("/", "-").lstrip("-")
+    if isinstance(raw_content, str):
+        return [{"role": "user", "content": raw_content}]
 
-    # 尝试精确匹配
-    for name in os.listdir(base):
-        if sanitized in name:
-            return os.path.join(base, name)
-
-    # 回退：找包含 finalreport-tax-agent 的目录（排除 scripts 子目录）
-    for name in os.listdir(base):
-        if "finalreport-tax-agent" in name and "scripts" not in name:
-            return os.path.join(base, name)
-
-    return ""
-
-
-def list_sessions() -> list[dict]:
-    """列出所有历史会话摘要。
-
-    Returns:
-        按时间倒序排列的会话列表，每个会话包含:
-            session_id, created_at, updated_at, message_count, preview
-    """
-    project_dir = _get_project_dir()
-    if not project_dir or not os.path.isdir(project_dir):
+    if not isinstance(raw_content, list):
         return []
 
-    sessions = []
-    for fname in os.listdir(project_dir):
-        if not fname.endswith(".jsonl"):
+    out: list[dict] = []
+    text_parts: list[str] = []
+    for block in raw_content:
+        if not isinstance(block, dict):
             continue
+        btype = block.get("type")
+        if btype == "text":
+            t = block.get("text")
+            if t:
+                text_parts.append(t)
+        elif btype == "tool_result":
+            out.append({"role": "tool", "content": str(block)})
+        # thinking / tool_use 在 history view 不展示 (AG-UI 流式已展示)
+    if text_parts:
+        out.insert(0, {"role": "user", "content": "\n".join(text_parts)})
+    return out
 
-        session_id = fname[:-6]  # strip .jsonl
-        path = os.path.join(project_dir, fname)
 
-        try:
-            with open(path) as f:
-                lines = f.readlines()
+# ── public API (与旧版同名 / 同返回形状, router 零修改) ──
 
-            if not lines:
-                continue
+def list_sessions() -> list[dict]:
+    """列出历史会话摘要。
 
-            created_at = None
-            updated_at = None
-            preview = ""
-            msg_count = 0
+    Returns:
+        按 last_modified 倒序, 每个会话:
+            {session_id, created_at, updated_at, summary}
+        注: `message_count` 字段已被移除 (SDK 不计算, 估算不可靠)。
+            `preview` 字段被 SDK 的 `summary` 替代 (预计算标题)。
+    """
+    cwd = os.getcwd()
+    try:
+        sessions = _sdk_list_sessions(directory=cwd, include_worktrees=False)
+    except Exception:
+        return []
 
-            for line in lines:
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+    out: list[dict] = []
+    for s in sessions:
+        out.append({
+            "session_id": s.session_id,
+            "created_at": _ms_to_iso(s.created_at),
+            "updated_at": _ms_to_iso(s.last_modified),
+            "summary": s.summary or s.first_prompt or "(空会话)",
+        })
 
-                ts = record.get("timestamp")
-                if ts:
-                    if created_at is None:
-                        created_at = ts
-                    updated_at = ts
-
-                rtype = record.get("type")
-                if rtype == "user":
-                    raw_content = record.get("message", {}).get("content", "")
-                    if isinstance(raw_content, str) and raw_content:
-                        preview = raw_content[:80]
-                        msg_count += 1
-                    elif isinstance(raw_content, list) and raw_content:
-                        # content is array (tool_result, etc.)
-                        first = raw_content[0]
-                        if isinstance(first, dict) and first.get("type") == "tool_result":
-                            preview = "[工具结果]"
-                        else:
-                            preview = str(first)[:80]
-                        msg_count += 1
-                elif rtype == "queue-operation" and record.get("operation") == "enqueue":
-                    content = record.get("content", "")
-                    if content and isinstance(content, str) and not preview:
-                        preview = content[:80]
-                elif rtype == "assistant" and record.get("content"):
-                    # assistant messages may be embedded differently
-                    pass
-
-            sessions.append({
-                "session_id": session_id,
-                "created_at": created_at,
-                "updated_at": updated_at,
-                "message_count": msg_count,
-                "preview": preview or "(空会话)",
-            })
-        except Exception:
-            continue
-
-    # 按 updated_at 倒序
-    sessions.sort(key=lambda s: s.get("updated_at") or "", reverse=True)
-    return sessions
+    out.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    return out
 
 
 def get_session_messages(session_id: str) -> list[dict]:
-    """获取指定会话的完整对话记录。
+    """获取会话完整对话记录。
 
     Args:
-        session_id: 会话 UUID（即 .jsonl 文件名）
+        session_id: 会话 UUID (SDK SessionInfo.session_id)
 
     Returns:
-        消息列表，每条消息包含 role, content, timestamp
+        消息列表,每条 {role, content, timestamp}。
+        role ∈ {"user", "assistant", "tool"} — 维持旧版契约,
+        让 frontend AgentChatPage.tsx (role: 'tool' 已支持) 零修改。
     """
-    project_dir = _get_project_dir()
-    if not project_dir:
+    cwd = os.getcwd()
+    try:
+        records = _sdk_get_session_messages(
+            session_id, directory=cwd, limit=1000, offset=0
+        )
+    except (ValueError, FileNotFoundError):
         return []
 
-    path = os.path.join(project_dir, f"{session_id}.jsonl")
-    if not os.path.exists(path):
-        return []
+    messages: list[dict] = []
+    for rec in records:
+        rtype = getattr(rec, "type", None)
+        message = getattr(rec, "message", None) or {}
+        raw_content = message.get("content") if isinstance(message, dict) else None
+        ts = getattr(rec, "uuid", "")  # UUID 作为稳定标识,前端 fallback 到 Date.now()
 
-    messages = []
-    with open(path) as f:
-        for line in f:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        if rtype == "user":
+            for m in _flatten_user_content(raw_content):
+                m["timestamp"] = ts
+                messages.append(m)
 
-            rtype = record.get("type")
-            ts = record.get("timestamp", "")
-
-            # 用户消息
-            if rtype == "user":
-                msg = record.get("message", {})
-                if msg.get("content"):
-                    messages.append({
-                        "role": "user",
-                        "content": msg["content"],
-                        "timestamp": ts,
-                    })
-
-            # 助手消息（可能有多种格式）
-            elif rtype == "assistant":
-                content_parts = []
-                for block in record.get("content", []):
-                    if isinstance(block, dict):
-                        if block.get("type") == "text" and block.get("text"):
-                            content_parts.append(block["text"])
-                        elif block.get("type") == "thinking" and block.get("thinking"):
-                            content_parts.append(f"[思考: {block['thinking']}]")
-                if content_parts:
-                    messages.append({
-                        "role": "assistant",
-                        "content": "\n".join(content_parts),
-                        "timestamp": ts,
-                    })
-
-            # 工具调用结果
-            elif rtype == "tool_result":
-                content = record.get("content", "")
-                if content:
-                    messages.append({
-                        "role": "tool",
-                        "content": str(content),
-                        "timestamp": ts,
-                    })
-
-            # queue-operation 中的用户消息（如果还没被 user 类型覆盖）
-            elif rtype == "queue-operation":
-                op = record.get("operation")
-                content = record.get("content", "")
-                if op == "enqueue" and content:
-                    # 检查是否已作为 user 消息存在
-                    if not messages or messages[-1].get("content") != content:
-                        messages.append({
-                            "role": "user",
-                            "content": content,
-                            "timestamp": ts,
-                        })
+        elif rtype == "assistant":
+            text_parts: list[str] = []
+            if isinstance(raw_content, list):
+                for block in raw_content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        t = block.get("text")
+                        if t:
+                            text_parts.append(t)
+            if text_parts:
+                messages.append({
+                    "role": "assistant",
+                    "content": "\n".join(text_parts),
+                    "timestamp": ts,
+                })
+            # thinking / tool_use 不进 history (AG-UI 流式已展示)
 
     return messages
 
 
 def delete_session(session_id: str) -> bool:
-    """删除指定会话文件。
-
-    Args:
-        session_id: 会话 UUID
-
-    Returns:
-        是否成功删除
-    """
-    project_dir = _get_project_dir()
-    if not project_dir:
-        return False
-
-    path = os.path.join(project_dir, f"{session_id}.jsonl")
+    """删除会话。True 成功, False 任何异常。"""
+    cwd = os.getcwd()
     try:
-        if os.path.exists(path):
-            os.remove(path)
-            return True
-    except Exception:
-        pass
-    return False
+        _sdk_delete_session(session_id, directory=cwd)
+        return True
+    except (ValueError, FileNotFoundError, OSError):
+        return False
