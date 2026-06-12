@@ -61,3 +61,21 @@ T.A.X.I. v0 的 ERP 集成层让用户从 Demo Case / CSV / 未来真连 ERPNext
 - [ ] 6 年 audit retention 实现
 - [ ] API key 加密存储
 - [ ] 用户授权页面合规
+
+---
+
+## v1 Update (2026-06-12): Pull-Only Mode
+
+T.A.X.I. v1 ERPNext 接入改为**手动 Pull 模式**:
+
+- ❌ **ERPNext on_submit 自动 push 已关闭** (`frappe-bench/apps/tax_integration/tax_integration/hooks.py`)
+- ✅ **用户从 T.A.X.I. Dashboard → Import Hub 手动拉取**(见 `docs/superpowers/specs/2026-06-12-erpnext-user-journey-design.md`)
+- ✅ **ERPNext 端 Web Form 跳转**作为引导(右上角 "T.A.X.I. ↗")
+
+## Why Pull-Only?
+
+代账会计 / 财务经理**主动控制报税节奏**比"被动接收"更符合工作习惯。手动 Pull 让用户在"已收集完本季度所有发票、准备报税"时一次性拉取,避免 ERPNext 提交时数据零散涌入。
+
+## 重新启用自动 Push
+
+如需切换回 push 模式,取消 `hooks.py` 中 `doc_events` 注释并重启 bench。
