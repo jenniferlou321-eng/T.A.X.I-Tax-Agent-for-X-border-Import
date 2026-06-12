@@ -1,6 +1,8 @@
 """ERPNext 导出 CSV Profile 测试 (Task 6)"""
 from decimal import Decimal
+import pytest
 from backend.erp.profiles import ERPNextExportProfile
+from backend.erp.csv_parser import parse_csv, CsvParseError
 
 
 def test_detect_erpnext_headers():
@@ -47,3 +49,25 @@ def test_transform_purchase_row():
     from backend.models.erp_models import PurchaseTransaction
     assert isinstance(txn, PurchaseTransaction)
     assert txn.counterparty == "Office Co"
+
+
+def test_erpnext_csv_parses_end_to_end():
+    """完整流程: ERPNext CSV → parse_csv → ImportResult 包含正确的 sales/purchases。
+
+    这是 Task 6 spec 评审发现的 blocker 修复后的回归测试：
+    之前 csv_parser 的全局 REQUIRED_COLUMNS 检查会让 ERPNext CSV
+    在 header 阶段就被拒，ERPNextExportProfile 永远不会被调用。
+    """
+    csv_bytes = (
+        b"Name,Posting Date,Customer,Net Total,Total Taxes,Grand Total,Docstatus\n"
+        b"SINV-2026-0142,2026-03-15,ACME,1000,200,1200,1\n"
+        b"PINV-2026-0089,2026-03-20,Office Co,450,90,540,1\n"
+    )
+    result = parse_csv(csv_bytes, profile="erpnext_export")
+    assert result.source_profile == "erpnext_export"
+    assert len(result.sales) == 1
+    assert result.sales[0].id == "SINV-2026-0142"
+    assert result.sales[0].net_amount == Decimal("1000")
+    assert len(result.purchases) == 1
+    assert result.purchases[0].id == "PINV-2026-0089"
+    assert result.purchases[0].counterparty == "Office Co"

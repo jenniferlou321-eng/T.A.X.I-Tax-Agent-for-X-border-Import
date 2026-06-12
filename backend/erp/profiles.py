@@ -29,12 +29,14 @@ class GenericProfile:
     """v0 唯一 Profile：8 列必填，txn_type 区分 sale/purchase"""
 
     name = "generic"
+    required_columns = REQUIRED_COLUMNS
 
     def detect(self, headers: List[str]) -> float:
         """返回 0.0-1.0 匹配分数。>=0.7 视为命中。"""
         headers_lower = [h.strip().lower() for h in headers]
-        matched = sum(1 for c in REQUIRED_COLUMNS if c in headers_lower)
-        return matched / len(REQUIRED_COLUMNS)
+        required = self.required_columns
+        matched = sum(1 for c in required if c in headers_lower)
+        return matched / len(required)
 
     def transform_row(
         self, row: Dict[str, str], row_index: int,
@@ -70,20 +72,30 @@ class ERPNextExportProfile:
         Grand Total, Docstatus
 
     通过 ID 前缀 (SINV-/PINV-) 区分销售/采购。
+
+    ERPNext 的销售/采购报表是分开导出的, 所以一个 CSV 里只会出现
+    Customer 或 Supplier 其中一列。`required_columns` 只列硬必需的列;
+    `optional_column_groups` 列出"至少要有一个"的可选列组。
     """
 
     name = "erpnext_export"
-
-    ERPNEXT_HEADERS = [
-        "name", "posting date", "customer", "supplier",
+    required_columns = [
+        "name", "posting date",
         "net total", "total taxes", "grand total", "docstatus",
     ]
+    optional_column_groups = [
+        ["customer", "supplier"],
+    ]
+
+    # Back-compat — 旧检测逻辑 / 外部代码可能引用 ERPNEXT_HEADERS
+    ERPNEXT_HEADERS = required_columns + [c for g in optional_column_groups for c in g]
 
     def detect(self, headers: List[str]) -> float:
         """返回 0.0-1.0 匹配分数。>=0.7 视为命中。"""
         headers_lower = [h.strip().lower() for h in headers]
-        matched = sum(1 for h in self.ERPNEXT_HEADERS if h in headers_lower)
-        return matched / len(self.ERPNEXT_HEADERS)
+        required = self.required_columns
+        matched = sum(1 for h in required if h in headers_lower)
+        return matched / len(required)
 
     def transform_row(
         self, row: Dict[str, str], row_index: int,

@@ -3,9 +3,9 @@ import io
 import pytest
 from decimal import Decimal
 from backend.erp.csv_parser import (
-    parse_csv, CsvParseError, detect_profile, REQUIRED_COLUMNS,
+    parse_csv, CsvParseError, detect_profile,
 )
-from backend.erp.profiles import GenericProfile
+from backend.erp.profiles import GenericProfile, REQUIRED_COLUMNS
 
 
 def test_required_columns_constant():

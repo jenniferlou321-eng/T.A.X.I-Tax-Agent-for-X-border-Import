@@ -9,7 +9,7 @@ from typing import List, Tuple
 from ..models.erp_models import (
     ImportResult, SalesTransaction, PurchaseTransaction,
 )
-from .profiles import GenericProfile, _PROFILES, REQUIRED_COLUMNS
+from .profiles import GenericProfile, _PROFILES
 from .reconcile import compute_taxi_nine_box
 
 
@@ -59,11 +59,20 @@ def parse_csv(file_bytes: bytes, profile: str | None = None) -> ImportResult:
         raise CsvParseError(f"unknown profile: {profile!r}")
     profile_obj = _PROFILES[profile]
 
-    # 4. 检查必填列
+    # 4. 检查必填列（用所选 profile 自己的 required_columns，而不是全局 REQUIRED_COLUMNS）
     headers_lower = [h.strip().lower() for h in headers]
-    missing = [c for c in REQUIRED_COLUMNS if c not in headers_lower]
+    required = profile_obj.required_columns
+    missing = [c for c in required if c not in headers_lower]
     if missing:
         raise CsvParseError(f"header missing required column(s): {missing}")
+
+    # 4b. 检查可选列组：每组里至少要出现一个
+    optional_groups = getattr(profile_obj, "optional_column_groups", []) or []
+    for group in optional_groups:
+        if not any(c in headers_lower for c in group):
+            raise CsvParseError(
+                f"header missing at least one of optional column group: {group}"
+            )
 
     # 5. 逐行解析
     sales: List[SalesTransaction] = []
