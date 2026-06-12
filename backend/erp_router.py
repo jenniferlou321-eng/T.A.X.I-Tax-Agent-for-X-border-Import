@@ -211,3 +211,33 @@ async def post_erpnext_pull(payload: dict):
         "amends": summary["amends"],
         "count": summary,
     }
+
+
+@router.get("/hub/summary")
+def hub_summary(period: str):
+    """取本 period 的 ImportHubStore 摘要(发票列表 + 计数)。"""
+    from .models.erp_models import SalesTransaction, PurchaseTransaction
+    items = ImportHubStore.list(period)
+    sales = [
+        SalesTransaction(
+            id=i.id, txn_date=i.txn_date, counterparty=i.counterparty,
+            net_amount=i.net_amount, vat_amount=i.vat_amount, gross_amount=i.gross_amount,
+            vat_rate=i.vat_rate, tax_code=i.tax_code,
+        )
+        for i in items if not i.cancelled and i.id.startswith("S")
+    ]
+    purchases = [
+        PurchaseTransaction(
+            id=i.id, txn_date=i.txn_date, counterparty=i.counterparty,
+            net_amount=i.net_amount, vat_amount=i.vat_amount, gross_amount=i.gross_amount,
+            vat_rate=i.vat_rate, tax_code=i.tax_code,
+        )
+        for i in items if not i.cancelled and i.id.startswith("P")
+    ]
+    return {
+        "period": period,
+        "sales": [s.model_dump(mode="json") for s in sales],
+        "purchases": [p.model_dump(mode="json") for p in purchases],
+        "count": ImportHubStore.count(period),
+        "raw": [i.model_dump(mode="json") for i in items],  # 含 cancelled / amend
+    }

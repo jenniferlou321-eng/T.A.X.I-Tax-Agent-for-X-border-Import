@@ -5,6 +5,7 @@ import type {
   ValidationResult,
   VATObligation,
   ImportResult, ReconciliationDelta,
+  SalesTransaction, PurchaseTransaction,
 } from '../types';
 
 // Default to a same-origin empty string so the request hits Vite's dev-server
@@ -147,5 +148,33 @@ export const api = {
         company?: string | null;
         source?: string | null;
       }>('/api/erp/erpnext/status'),
+    erpnextPull: (body: {
+      url: string;
+      api_key: string;
+      api_secret: string;
+      period: string;
+      period_start: string;
+      period_end: string;
+      since?: string;
+    }) =>
+      fetchApi<{
+        status: 'ok';
+        period: string;
+        sales: number;
+        purchases: number;
+        cancelled: number;
+        amends: number;
+        count: { sales: number; purchases: number; cancelled: number; amends: number; total: number };
+      }>('/api/erp/erpnext/pull', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    erpnextHubSummary: (period: string) =>
+      fetchApi<{
+        period: string;
+        sales: SalesTransaction[];
+        purchases: PurchaseTransaction[];
+        count: { sales: number; purchases: number; cancelled: number; amends: number; total: number };
+      }>(`/api/erp/hub/summary?period=${encodeURIComponent(period)}`),
   },
 };
