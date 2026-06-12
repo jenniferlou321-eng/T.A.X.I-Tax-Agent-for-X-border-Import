@@ -75,7 +75,7 @@ function formatTime(iso: string) {
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function buildWelcomeMessage(caseTitle?: string): ChatMessage {
+function buildWelcomeMessage(caseTitle?: string, hasErpData?: boolean): ChatMessage {
   let content =
     '您好！我是 TaxAgent 智能报税助手。\n\n' +
     '我可以帮您：\n' +
@@ -85,11 +85,13 @@ function buildWelcomeMessage(caseTitle?: string): ChatMessage {
     '• 提交 VAT Return 至 HMRC\n' +
     '• 查询已提交的申报'
   if (caseTitle) {
-    content +=
-      `\n\n当前已加载 Case: "${caseTitle}"。` +
-      '已为您准备好 ERP 数据,直接说"帮我算税"或"提交申报"即可。'
+    content += `\n\n当前已加载 Case: "${caseTitle}"。`
+    content += hasErpData
+      ? 'ERP 数据已就绪 — 使用下方 Quick Action 一键开始。'
+      : 'ERP 数据正在加载中…稍候即可使用 Quick Action。'
+  } else {
+    content += '\n\n请先在 Dashboard 选择一个 Demo Case,或直接输入您的问题。'
   }
-  content += '\n\n请告诉我您需要什么帮助？'
   return {
     id: 'welcome',
     role: 'assistant',
@@ -107,7 +109,7 @@ export default function AgentChatPage() {
   const currentCase = buffer?.preset ?? null
 
   const [messages, setMessages] = useState<ChatMessage[]>([
-    buildWelcomeMessage(currentCase?.title),
+    buildWelcomeMessage(currentCase?.title, !!buffer?.erpData),
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -140,11 +142,8 @@ export default function AgentChatPage() {
       alert('请先在 Dashboard 选择一个 Demo Case')
       return
     }
-    setInput('帮我分析目前的财务数据')
-    setTimeout(() => {
-      const form = document.querySelector('form') as HTMLFormElement
-      form?.requestSubmit()
-    }, 100)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    handleSend('帮我分析目前的财务数据')
   }
 
   const handleCalculateAndFile = () => {
@@ -152,11 +151,8 @@ export default function AgentChatPage() {
       alert('请先在 Dashboard 选择一个 Demo Case')
       return
     }
-    setInput('帮我计算本年增值税并申报')
-    setTimeout(() => {
-      const form = document.querySelector('form') as HTMLFormElement
-      form?.requestSubmit()
-    }, 100)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    handleSend('帮我计算本年增值税并申报')
   }
 
   // ── History Sidebar State ──
@@ -666,13 +662,25 @@ export default function AgentChatPage() {
   }
 
   const clearChat = () => {
+    if (!window.confirm('确定要清空当前对话吗?Case 数据不会被删除。')) return
     abortRef.current?.abort()
     abortRef.current = null
     resetRunState()
-    setMessages([buildWelcomeMessage(currentCase?.title)])
+    setMessages([buildWelcomeMessage(currentCase?.title, !!buffer?.erpData)])
     setSessionId('')
     setIsLoading(false)
     setSampleData(null)
+  }
+
+  // 优先用 buffer 里已经准备好的 case 数据,没有 case 时回退到 loadSampleData
+  const handleAnalyzeCurrentCase = async () => {
+    const data = (importResult as unknown as Record<string, unknown> | null) ?? (buffer?.erpData as unknown as Record<string, unknown> | null) ?? null
+    if (data) {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      sendWithRawData('请分析这些数据并帮我报税', data)
+      return
+    }
+    await loadSampleData()
   }
 
   // ── Load Sample Business Data ──
@@ -838,9 +846,9 @@ export default function AgentChatPage() {
             <button
               onClick={clearChat}
               className="p-2 text-fg-dim hover:text-fg hover:bg-bg-elevated rounded-md transition-colors"
-              title="重置对话"
+              title="清空对话(不删除 Case 数据)"
             >
-              <ArrowPathIcon className="w-4 h-4" />
+              <TrashIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -862,12 +870,12 @@ export default function AgentChatPage() {
             <div className="flex gap-2 fade-in">
               <QuickActionButton
                 icon={<MagnifyingGlassIcon className="w-4 h-4" />}
-                label="🔍 帮我分析目前的财务数据"
+                label={`🔍 分析 ${currentCase?.title ?? '当前数据'}`}
                 onClick={handleAnalyzeData}
               />
               <QuickActionButton
                 icon={<ChartBarIcon className="w-4 h-4" />}
-                label="📊 帮我计算本年增值税并申报"
+                label="📊 算 9-Box 并准备申报"
                 onClick={handleCalculateAndFile}
                 variant="primary"
               />
@@ -1041,31 +1049,37 @@ export default function AgentChatPage() {
           {/* Quick Actions */}
           <div className="flex items-center gap-2 max-w-3xl mx-auto mb-2">
             <button
-              onClick={loadSampleData}
+              onClick={handleAnalyzeCurrentCase}
               disabled={isLoading || sampleDataLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 text-accent rounded-lg hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="加载 Shenzhen TechFlow 集团 Q1 2026 跨境数据"
+              title={currentCase ? `分析 ${currentCase.title} 的 ERP 数据` : '加载示例数据(未选择 Case)'}
             >
               {sampleDataLoading ? (
                 <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <BuildingOfficeIcon className="w-3.5 h-3.5" />
               )}
-              {sampleData ? '重新分析集团 Q1 跨境数据' : '加载集团 Q1 跨境数据'}
+              {currentCase ? '分析当前帐套数据' : '加载示例数据'}
             </button>
-            {sampleData && (
+            {currentCase ? (
               <span className="text-[11px] text-fg-dim">
-                ✅ 已加载: Shenzhen TechFlow 集团 Q1 2026
+                ✅ 已加载: {currentCase.title}
+              </span>
+            ) : (
+              <span className="text-[11px] text-fg-dim">
+                ⚠️ 未加载 Case,示例数据可能与预期不一致
               </span>
             )}
-            <button
-              onClick={() => setShowInvoicePanel({ type: 'sale' })}
-              className="btn btn-sm btn-ghost"
-              disabled={!importResult}
-              title="开发演示用: 打开发票多选面板"
-            >
-              📋 选择发票 (dev)
-            </button>
+            {import.meta.env.DEV && (
+              <button
+                onClick={() => setShowInvoicePanel({ type: 'sale' })}
+                className="btn btn-sm btn-ghost"
+                disabled={!importResult}
+                title="开发演示用: 打开发票多选面板"
+              >
+                📋 选择发票 (dev)
+              </button>
+            )}
           </div>
           <form
             onSubmit={(e) => {
