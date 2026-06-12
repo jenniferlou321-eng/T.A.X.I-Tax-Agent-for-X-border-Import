@@ -8,8 +8,6 @@ import {
   DocumentTextIcon,
   GlobeAltIcon,
   ChevronRightIcon,
-  CpuChipIcon,
-  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { api } from '../api/client'
 import type { FilingResult } from '../types'
@@ -199,31 +197,6 @@ function DashboardPage() {
           <ArrowRightIcon className="w-4 h-4" />
         </Link>
       </div>
-
-      {/* AI Agent Banner */}
-      <Link
-        to="/agent"
-        className="block card card-interactive p-5 fade-in bg-gradient-to-r from-primary/5 via-secondary/5 to-accent/5 border-primary/20"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-glow-primary shrink-0">
-            <CpuChipIcon className="w-6 h-6 text-on-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-fg">TaxAgent 智能助手</h3>
-              <span className="px-1.5 py-0.5 bg-accent/20 text-accent text-[10px] font-bold rounded flex items-center gap-1">
-                <SparklesIcon className="w-3 h-3" />
-                AI
-              </span>
-            </div>
-            <p className="text-sm text-fg-muted mt-1">
-              自然语言对话完成 HMRC VAT 申报：查询义务、自动计算、验证数据、一键提交
-            </p>
-          </div>
-          <ArrowRightIcon className="w-5 h-5 text-primary shrink-0" />
-        </div>
-      </Link>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
