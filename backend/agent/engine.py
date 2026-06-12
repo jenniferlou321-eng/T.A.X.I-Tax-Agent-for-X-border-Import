@@ -22,6 +22,7 @@ from .tools import (
     SDK_AVAILABLE,
     set_registry,
 )
+from .workspace_store import ensure_case, WORKSPACE_ROOT
 from backend.services.audit_log import AuditLog
 
 # ── SDK 导入（带优雅降级） ──
@@ -88,7 +89,9 @@ class AgentSession:
     period_key: str = ""
     status: str = "idle"             # idle | chatting | calculating | confirming | submitting | done
     line_items: list[dict] = field(default_factory=list)
-    raw_business_data: Optional[dict] = None
+    raw_business_data: Optional[dict] = None  # deprecated: 不再被 prompt 路径使用;保留字段避免破坏 session store
+    workspace_path: str = ""  # 新增:workspace 目录路径(给 LLM 看),由 raw_business_data 落盘后填
+    _case_id: str = ""  # 内部:首次拿到 case_id 后缓存,后续轮次复用
     messages: list[dict] = field(default_factory=list)
     # SDK client cache (按 jurisdiction 缓存，切换 jurisdiction 时重建)
     _clients: dict[str, ClaudeSDKClient] = field(default_factory=dict)
@@ -164,6 +167,7 @@ class TaxAgentEngine:
         uploaded_data: Optional[list[dict]] = None,
         raw_business_data: Optional[dict] = None,
         jurisdiction: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """与 Agent 对话，流式返回响应文本。
 
@@ -173,11 +177,16 @@ class TaxAgentEngine:
             uploaded_data: 用户上传的 line items（可选）
             raw_business_data: 用户上传的原始企业数据（可选）
             jurisdiction: 强制指定管辖地（可选，否则从会话状态推断）
+            case_id: 案例标识(可选)。落盘到 ~/.taxi/workspace/<case_id>/
 
         Yields:
             流式文本片段
         """
         session = self._get_or_create_session(session_id)
+
+        # 缓存 case_id(session 首次拿到后复用,后续轮次不依赖 query string)
+        if case_id:
+            session._case_id = case_id
 
         # 处理管辖地切换
         if jurisdiction:
@@ -192,39 +201,31 @@ class TaxAgentEngine:
             session.line_items = uploaded_data
             yield "📎 已接收上传数据，共 {} 条记录\n".format(len(uploaded_data))
 
-        # 处理原始业务数据
+        # 处理原始业务数据 → 落盘到 workspace(不再灌 prompt)
         if raw_business_data:
-            session.raw_business_data = raw_business_data
+            session.raw_business_data = raw_business_data  # 保留字段(向后兼容)
+            effective_case_id = session._case_id or "default"
+            try:
+                session.workspace_path = ensure_case(effective_case_id, raw_business_data)
+                yield f"📎 workspace 已落盘: {session.workspace_path}\n"
+            except Exception as e:
+                # 落盘失败不阻塞 chat,降级到不附 workspace 路径
+                yield f"⚠️ workspace 落盘失败: {e}\n"
+            # 抽取 taxpayer_id / period_key(SDK / 业务工具仍要用)
             company = raw_business_data.get("company", {})
-            company_name = company.get("name", "Unknown")
-            sales_count = len(raw_business_data.get("sales_invoices", []))
-            purchase_count = len(raw_business_data.get("purchase_invoices", []))
-            yield f"📎 已接收企业原始数据: {company_name}\n"
-            yield f"   销售发票 {sales_count} 张, 采购发票 {purchase_count} 张\n"
-
-        # 构建增强消息
-        enriched_message = user_message
-        if getattr(session, "raw_business_data", None):
-            company = session.raw_business_data.get("company", {})
-            tax_id = company.get("vrn", "")
-            period_key = company.get("period", {}).get("period_key", "")
-            data_summary = (
-                f"\n\n[系统: 用户已上传完整企业原始数据]\n"
-                f"公司名称: {company.get('name', '')}\n"
-                f"纳税人识别号: {tax_id}\n"
-                f"申报期间: {company.get('period', {}).get('label', '')} ({company.get('period', {}).get('start', '')} ~ {company.get('period', {}).get('end', '')})\n"
-                f"数据包含: {len(session.raw_business_data.get('sales_invoices', []))} 张销售发票, "
-                f"{len(session.raw_business_data.get('purchase_invoices', []))} 张采购发票, "
-                f"{len(session.raw_business_data.get('expense_claims', []))} 条费用报销, "
-                f"{len(session.raw_business_data.get('reverse_charge_transactions', []))} 条反向征收, "
-                f"{len(session.raw_business_data.get('vat_adjustments', []))} 条 VAT 调整\n"
-                f"\n你可以使用 analyze_business_data 工具分析这些数据，参数 company_data_json 为原始数据的 JSON 字符串。"
-            )
-            enriched_message += data_summary
-            if tax_id:
-                session.taxpayer_id = tax_id
+            if company.get("vrn"):
+                session.taxpayer_id = company["vrn"]
+            period_key = (company.get("period") or {}).get("period_key")
             if period_key:
                 session.period_key = period_key
+
+        # 构建增强消息:不再灌数据摘要,只附 workspace 路径 reminder
+        enriched_message = user_message
+        if session.workspace_path:
+            enriched_message += (
+                f"\n\n[Workspace: {session.workspace_path}]\n"
+                f"按需 Read 该目录下文件(manifest/sales/purchases/nine_box/...)即可,不要让用户重发。"
+            )
         elif session.line_items and "数据" not in user_message and "data" not in user_message.lower():
             enriched_message += f"\n\n[系统: 用户已上传 {len(session.line_items)} 条 line items]"
 
@@ -320,6 +321,15 @@ class TaxAgentEngine:
         client = session._clients.get(client_key)
         if client is None:
             system_prompt = get_system_prompt(jurisdiction, tax_type)
+            # 追加 workspace 目录布局说明(per-jurisdiction 通用,不注入具体 case_id)
+            system_prompt += (
+                "\n\n[Workspace]\n"
+                "Case data is on disk at ~/.taxi/workspace/<case_id>/. "
+                "Files: manifest.json, sales.json, purchases.json, nine_box.json, "
+                "warnings.json, source_meta.json, and source_docs/*.json for invoice-level JSON. "
+                "Use the Read tool to load the file(s) you need — do NOT ask the user to resend data. "
+                "The path remains valid for the entire session."
+            )
             allowlist = get_allowlist_for(jurisdiction, tax_type)
 
             options_kwargs = {
@@ -327,6 +337,9 @@ class TaxAgentEngine:
                 "allowed_tools": allowlist,
                 "permission_mode": self.permission_mode,
                 "cwd": self.cwd,
+                # 把 ~/.taxi/workspace 暴露给 SDK 内置 Read 工具,
+                # 让 LLM 能直接 Read case 数据文件(不灌 prompt)
+                "add_dirs": [str(WORKSPACE_ROOT)],
                 # 不加载 user/project settings，避免首次运行 onboarding/trust 阻塞
                 "setting_sources": [],
                 # AG-UI 协议需要 token-level streaming：开启后 CLI 在

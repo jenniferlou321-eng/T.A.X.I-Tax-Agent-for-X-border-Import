@@ -263,20 +263,31 @@ export const useDemoStore = create<DemoState>()(
     }),
     {
       name: 'taxi:demo-buffer',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => localStorage),
       // 持久化 buffer + selectedPreset(同步)+ erpConnectionOn
       // action 函数不持久化
-      partialize: (state) => ({
-        buffer: state.buffer,
-        selectedPreset: state.selectedPreset,
-        erpConnectionOn: state.erpConnectionOn,
-        erpnextCredentials: state.erpnextCredentials,
-        hubDataByPeriod: state.hubDataByPeriod,
-      }),
+      // v4:buffer.erpData 不再持久化(后端是单一 source of truth,落盘到 ~/.taxi/workspace/)
+      partialize: (state) => {
+        const persistedBuffer = state.buffer
+          ? (() => {
+              const { erpData: _stripped, ...rest } = state.buffer as CaseWorkingBuffer & { erpData: unknown };
+              void _stripped;
+              return rest;
+            })()
+          : null;
+        return {
+          buffer: persistedBuffer,
+          selectedPreset: state.selectedPreset,
+          erpConnectionOn: state.erpConnectionOn,
+          erpnextCredentials: state.erpnextCredentials,
+          hubDataByPeriod: state.hubDataByPeriod,
+        };
+      },
       // 持久化版本升级时:
       //   v1 → v2:case 精简后 preset ID 改名,旧 buffer.preset.id 失效,直接 discard
       //   v2 → v3:补全新增的 erpnextCredentials / hubDataByPeriod 字段(老数据里没有)
+      //   v3 → v4:strip 老 buffer.erpData(后端已接管落盘,前端不再缓存整本)
       migrate: (persistedState, version) => {
         if (version < 2) {
           // 旧 ID 全部 discard(standard-taxable / real-business-q1 / net-refund / zero-filing)
@@ -289,6 +300,16 @@ export const useDemoStore = create<DemoState>()(
             erpnextCredentials: (persistedState as any).erpnextCredentials ?? null,
             hubDataByPeriod: (persistedState as any).hubDataByPeriod ?? {},
           };
+        }
+        if (version < 4) {
+          // v3 → v4:strip 老 buffer.erpData(后端已接管)
+          const s = persistedState as any;
+          if (s.buffer && 'erpData' in s.buffer) {
+            const { erpData: _stripped, ...rest } = s.buffer;
+            void _stripped;
+            return { ...s, buffer: rest };
+          }
+          return s;
         }
         return persistedState as any;
       },

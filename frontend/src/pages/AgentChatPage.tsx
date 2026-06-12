@@ -604,8 +604,11 @@ export default function AgentChatPage() {
     }
   }
 
-  // ── 发送带原始业务数据的消息 ──
-  const sendWithRawData = useCallback(async (message: string, data: Record<string, unknown>) => {
+  // ── 发送带 workspace 上下文的消息（case_id 优先;rawData 兼容老客户端） ──
+  const sendWithRawData = useCallback(async (
+    message: string,
+    opts?: { caseId?: string; rawData?: Record<string, unknown> }
+  ) => {
     const text = message.trim()
     if (!text || isLoading) return
 
@@ -619,12 +622,19 @@ export default function AgentChatPage() {
     const sid = sessionId || generateId()
     if (!sessionId) setSessionId(sid)
 
+    // 构造 query string:case_id 优先,rawData 兼容
+    const params = new URLSearchParams({ session_id: sid, message: text })
+    if (opts?.caseId) params.set('case_id', opts.caseId)
+    if (opts?.rawData) params.set('raw_data', JSON.stringify(opts.rawData))
+
     setMessages((prev) => [
       ...prev,
       {
         id: generateId(),
         role: 'user',
-        content: text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
+        content: opts?.caseId
+          ? text + '\n[已加载 Case — workspace 落盘中,后端将通过 Read 工具提供数据]'
+          : text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
         timestamp: new Date(),
         status: 'done',
       },
@@ -632,7 +642,7 @@ export default function AgentChatPage() {
 
     try {
       const response = await fetch(
-        `${API_BASE}/api/agent/chat?session_id=${sid}&message=${encodeURIComponent(text)}&raw_data=${encodeURIComponent(JSON.stringify(data))}`,
+        `${API_BASE}/api/agent/chat?${params.toString()}`,
         { method: 'POST', signal: controller.signal }
       )
       await consumeAguiStream(response, handleAguiEvent, { signal: controller.signal })
@@ -672,15 +682,15 @@ export default function AgentChatPage() {
     setSampleData(null)
   }
 
-  // 优先用 buffer 里已经准备好的 case 数据,没有 case 时回退到 loadSampleData
+  // 强制要求已选 Case(无 case 时按钮 disabled 拦截,此处兜底 alert)
+  // 走 case_id 路径,后端落盘 workspace + LLM 用 Read 工具按需读取
   const handleAnalyzeCurrentCase = async () => {
-    const data = (importResult as unknown as Record<string, unknown> | null) ?? (buffer?.erpData as unknown as Record<string, unknown> | null) ?? null
-    if (data) {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      sendWithRawData('请分析这些数据并帮我报税', data)
+    if (!currentCase) {
+      alert('请先在 Dashboard 选择一个 Demo Case')
       return
     }
-    await loadSampleData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    sendWithRawData('请分析这些数据并帮我报税', { caseId: currentCase.id })
   }
 
   // ── Load Sample Business Data ──
@@ -1048,16 +1058,16 @@ export default function AgentChatPage() {
           <div className="flex items-center gap-2 max-w-3xl mx-auto mb-2">
             <button
               onClick={handleAnalyzeCurrentCase}
-              disabled={isLoading || sampleDataLoading}
+              disabled={!currentCase || isLoading || sampleDataLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 text-accent rounded-lg hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title={currentCase ? `分析 ${currentCase.title} 的 ERP 数据` : '加载示例数据(未选择 Case)'}
+              title={currentCase ? `分析 ${currentCase.title} 的 ERP 数据` : '请先在 Dashboard 选择 Case'}
             >
               {sampleDataLoading ? (
                 <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <BuildingOfficeIcon className="w-3.5 h-3.5" />
               )}
-              {currentCase ? '分析当前帐套数据' : '加载示例数据'}
+              {currentCase ? '分析当前帐套数据' : '请先选择 Case'}
             </button>
             {currentCase ? (
               <span className="text-[11px] text-fg-dim">
@@ -1065,7 +1075,7 @@ export default function AgentChatPage() {
               </span>
             ) : (
               <span className="text-[11px] text-fg-dim">
-                ⚠️ 未加载 Case,示例数据可能与预期不一致
+                ⚠️ 未加载 Case — 请先在 Dashboard 选择一个 Demo Case
               </span>
             )}
             {import.meta.env.DEV && (
