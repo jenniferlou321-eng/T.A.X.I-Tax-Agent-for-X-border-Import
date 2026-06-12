@@ -941,9 +941,7 @@ export default function AgentChatPage() {
                 {msg.role === 'assistant' ? (
                   msg.content ? (
                     <Markdown content={msg.content} streaming={msg.status === 'streaming'} />
-                  ) : (
-                    <span className="text-fg-muted">…</span>
-                  )
+                  ) : null
                 ) : (
                   <span className="whitespace-pre-wrap">{msg.content}</span>
                 )}
