@@ -5,6 +5,7 @@
 - POST /api/erp/import               — multipart 上传 CSV
 - POST /api/erp/reconcile            — 调 reconcile 生成差异报告
 - POST /api/erp/erpnext/push         — 接收 ERPNext HMAC 签名推送
+- POST /api/erp/erpnext/pull         — 手动从 ERPNext REST 拉本期内发票
 - GET  /api/erp/erpnext/status       — ERPNext 连接状态
 """
 from __future__ import annotations
@@ -17,7 +18,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from .erp.csv_parser import CsvParseError, parse_csv
 from .erp.erp_samples_loader import DemoCaseNotFoundError, list_demo_cases, load_demo_case
 from .erp.erpnext_connector import payload_to_import_result, validate_signature
-from .erp import erpnext_pull as _erpnext_pull_mod
+from .erp import erpnext_pull
 from .erp.reconcile import compute_taxi_nine_box, reconcile
 from .models.erp_models import ImportResult
 from .services.erpnext_buffer import (
@@ -156,7 +157,7 @@ def erpnext_status():
 
 
 @router.post("/erpnext/pull")
-async def erpnext_pull(payload: dict):
+async def post_erpnext_pull(payload: dict):
     """手动 Pull:从 T.A.X.I. 主动拉 ERPNext 数据。
 
     Body: {
@@ -173,8 +174,11 @@ async def erpnext_pull(payload: dict):
     period = payload.get("period", "")
     if not period:
         raise HTTPException(status_code=422, detail="period required")
-    period_start = date.fromisoformat(payload["period_start"])
-    period_end = date.fromisoformat(payload["period_end"])
+    try:
+        period_start = date.fromisoformat(payload.get("period_start", ""))
+        period_end = date.fromisoformat(payload.get("period_end", ""))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=f"invalid date format: {e}") from e
     since = date.fromisoformat(payload["since"]) if payload.get("since") else None
 
     base_url = payload.get("url", "").rstrip("/")
@@ -184,13 +188,13 @@ async def erpnext_pull(payload: dict):
     all_invoices = []
     for doctype in ("Sales Invoice", "Purchase Invoice"):
         try:
-            invs = await _erpnext_pull_mod.pull_invoices(
+            invs = await erpnext_pull.pull_invoices(
                 base_url=base_url, api_key=api_key, api_secret=api_secret,
                 period_start=period_start, period_end=period_end,
                 doctype=doctype, since=since,
             )
             all_invoices.extend(invs)
-        except _erpnext_pull_mod.ErpNextPullError as e:
+        except erpnext_pull.ErpNextPullError as e:
             raise HTTPException(
                 status_code=500,
                 detail={"message": str(e), "status_code": e.status_code, "doctype": doctype},
@@ -206,8 +210,4 @@ async def erpnext_pull(payload: dict):
         "cancelled": summary["cancelled"],
         "amends": summary["amends"],
         "count": summary,
-        "doctype_breakdown": {
-            "Sales Invoice": sum(1 for i in all_invoices if i.id.startswith("S")),
-            "Purchase Invoice": sum(1 for i in all_invoices if i.id.startswith("P")),
-        },
     }
