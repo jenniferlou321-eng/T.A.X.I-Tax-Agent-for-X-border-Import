@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import httpx
 
-from ..models.erp_models import HubInvoice
+from ..models.erp_models import HubInvoice, SalesTransaction, PurchaseTransaction
 
 
 class ErpNextPullError(Exception):
@@ -115,3 +115,31 @@ def _to_hub_invoice(doc: dict, doctype: str) -> HubInvoice:
         parent=parent,
         source="erpnext_pull",
     )
+
+
+def hub_invoices_to_txn(
+    invoices: List[HubInvoice], *, filter_cancelled: bool = True,
+) -> tuple[List[SalesTransaction], List[PurchaseTransaction]]:
+    """HubInvoice list → (sales, purchases)。
+
+    Cancelled 的发票默认过滤掉。Amend 保留(同 id 前缀归类,负数自然抵减 9-Box)。
+    """
+    sales: List[SalesTransaction] = []
+    purchases: List[PurchaseTransaction] = []
+    for inv in invoices:
+        if filter_cancelled and inv.cancelled:
+            continue
+        common = dict(
+            id=inv.id, txn_date=inv.txn_date, counterparty=inv.counterparty,
+            net_amount=inv.net_amount, vat_amount=inv.vat_amount,
+            gross_amount=inv.gross_amount, vat_rate=inv.vat_rate, tax_code=inv.tax_code,
+        )
+        # 简化:id 以 S 开头 → sales,以 P 开头 → purchases(其他 fallback)
+        if inv.id.startswith("S"):
+            sales.append(SalesTransaction(**common))
+        elif inv.id.startswith("P"):
+            purchases.append(PurchaseTransaction(**common))
+        else:
+            # 兜底:看不出就放 sales
+            sales.append(SalesTransaction(**common))
+    return sales, purchases
