@@ -1,9 +1,11 @@
-"""Tests for backend.erp.erpnext_pull.hub_invoices_to_txn helper."""
+"""Tests for backend.erp.hub_to_txn.hub_invoices_to_txn helper."""
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.models.erp_models import HubInvoice
-from backend.erp.erpnext_pull import hub_invoices_to_txn
+from backend.erp.hub_to_txn import hub_invoices_to_txn
 
 
 def test_hub_to_txn_filters_cancelled():
@@ -41,12 +43,24 @@ def test_hub_to_txn_keeps_amend_negative_amounts():
         HubInvoice(id="S1", txn_date=date(2026, 3, 15), counterparty="A",
                    net_amount=Decimal("1000"), vat_amount=Decimal("200"),
                    gross_amount=Decimal("1200"), vat_rate=Decimal("0.20"), tax_code="T1"),
-        HubInvoice(id="CN1", txn_date=date(2026, 3, 20), counterparty="A",
+        # id 以 S 开头(真实 ERPNext 销售贷项通知单命名),自然归到 sales
+        HubInvoice(id="SINV-CN-2026-0001", txn_date=date(2026, 3, 20), counterparty="A",
                    net_amount=Decimal("-1000"), vat_amount=Decimal("-200"),
                    gross_amount=Decimal("-1200"), vat_rate=Decimal("0.20"), tax_code="T1",
                    is_amend=True, parent="S1"),
     ]
     sales, _ = hub_invoices_to_txn(invs)
-    # CN1 应该被识别为 sales(因为 id 以 S 开头,doctype=Sales Invoice)
+    # SINV-CN-2026-0001 应该被识别为 sales(id 以 S 开头)
     assert len(sales) == 2
     assert sum(s.net_amount for s in sales) == Decimal("0")
+
+
+def test_hub_to_txn_unknown_prefix_raises():
+    """未知 id 前缀必须抛 ValueError,不能静默归到 sales。"""
+    invs = [
+        HubInvoice(id="X-001", txn_date=date(2026, 3, 15), counterparty="A",
+                   net_amount=Decimal("1000"), vat_amount=Decimal("200"),
+                   gross_amount=Decimal("1200"), vat_rate=Decimal("0.20"), tax_code="T1"),
+    ]
+    with pytest.raises(ValueError, match="does not start with S or P"):
+        hub_invoices_to_txn(invs)
