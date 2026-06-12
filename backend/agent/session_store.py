@@ -22,6 +22,9 @@ from claude_agent_sdk import (
     list_sessions as _sdk_list_sessions,
 )
 
+# cwd 在进程生命周期内不变,缓存避免每次调用 os.getcwd()
+_CWD = os.getcwd()
+
 
 # ── helpers ──
 
@@ -78,9 +81,8 @@ def list_sessions() -> list[dict]:
         注: `message_count` 字段已被移除 (SDK 不计算, 估算不可靠)。
             `preview` 字段被 SDK 的 `summary` 替代 (预计算标题)。
     """
-    cwd = os.getcwd()
     try:
-        sessions = _sdk_list_sessions(directory=cwd, include_worktrees=False)
+        sessions = _sdk_list_sessions(directory=_CWD, include_worktrees=False)
     except Exception:
         return []
 
@@ -108,10 +110,9 @@ def get_session_messages(session_id: str) -> list[dict]:
         role ∈ {"user", "assistant", "tool"} — 维持旧版契约,
         让 frontend AgentChatPage.tsx (role: 'tool' 已支持) 零修改。
     """
-    cwd = os.getcwd()
     try:
         records = _sdk_get_session_messages(
-            session_id, directory=cwd, limit=1000, offset=0
+            session_id, directory=_CWD, limit=1000, offset=0
         )
     except (ValueError, FileNotFoundError):
         return []
@@ -149,9 +150,8 @@ def get_session_messages(session_id: str) -> list[dict]:
 
 def delete_session(session_id: str) -> bool:
     """删除会话。True 成功, False 任何异常。"""
-    cwd = os.getcwd()
     try:
-        _sdk_delete_session(session_id, directory=cwd)
+        _sdk_delete_session(session_id, directory=_CWD)
         return True
     except (ValueError, FileNotFoundError, OSError):
         return False

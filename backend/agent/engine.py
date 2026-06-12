@@ -79,12 +79,7 @@ else:
 # ═══════════════════════════════════════════════════════════
 
 def _build_workspace_reminder(workspace_path: str) -> str:
-    """统一构造 workspace reminder(SDK 模式 + mock 模式共用)
-
-    行为:
-        - SDK 模式:LLM 看到后用 Read 工具读真实文件
-        - Mock 模式:LLM 看不到 Read 工具,reminder 是占位(用户拍板:附但不指望用)
-    """
+    """构造 workspace reminder — 告诉 LLM 读 manifest 而非索要 VRN。"""
     if not workspace_path:
         return ""
     return (
@@ -210,12 +205,10 @@ class TaxAgentEngine:
             # 从 case_id 推断管辖地(case-x-uk-* → uk)
             if not session.jurisdiction:
                 cid_lower = case_id.lower()
-                if "-uk-" in cid_lower or cid_lower.startswith("uk"):
-                    session.jurisdiction = "uk"
-                elif "-cn-" in cid_lower or cid_lower.startswith("cn"):
-                    session.jurisdiction = "cn"
-                elif "-de-" in cid_lower or cid_lower.startswith("de"):
-                    session.jurisdiction = "de"
+                for cc in ("uk", "cn", "de", "fr"):
+                    if f"-{cc}-" in cid_lower or cid_lower.startswith(cc):
+                        session.jurisdiction = cc
+                        break
 
         # 处理管辖地切换
         if jurisdiction:
@@ -387,6 +380,8 @@ class TaxAgentEngine:
                 "add_dirs": [str(WORKSPACE_ROOT)],
                 # 不加载 user/project settings，避免首次运行 onboarding/trust 阻塞
                 "setting_sources": [],
+                # 同时忽略 .mcp.json 和 plugin MCP servers
+                "strict_mcp_config": True,
                 # AG-UI 协议需要 token-level streaming：开启后 CLI 在
                 # 每个 content_block_delta 上 emit StreamEvent 帧，
                 # 我们在 receive_response() 里识别它们并 yield 纯文本。
@@ -726,6 +721,13 @@ class TaxAgentEngine:
         msg_lower = user_message.lower()
         jurisdiction = session.jurisdiction or "uk"
 
+        # 构造 workspace 前缀(一次,复用)
+        ws_prefix = ""
+        if session.workspace_path:
+            ws_prefix = f"📂 workspace: {session.workspace_path}\n"
+            if session.taxpayer_id:
+                ws_prefix += f"📋 VRN: {session.taxpayer_id}\n"
+
         # 演示用的推理片段：让前端折叠面板在没有 API key 时也能展示
         # 完整生命周期（auto-open → collapse）。生产环境不会跑这条路径。
         yield {"__agui__": "reasoning_start"}
@@ -750,18 +752,13 @@ class TaxAgentEngine:
             yield f"4. 提交申报\n"
             return
 
-        # UK Mock Mode (保持不变)
-        # workspace reminder 也注入 mock 模式 — 虽说 mock 模式 LLM 没有 Read 工具,
-        # 但用户在 demo 演示时仍能从 chat 看到"workspace 已落盘"的提示
-        if session.workspace_path:
-            yield f"📂 {session.workspace_path} (workspace 已落盘 — mock 模式无 Read 工具)\n\n"
-
         if getattr(session, "raw_business_data", None) and ("分析" in user_message or "analyze" in msg_lower or "计算" in msg_lower or "报税" in msg_lower):
             data = session.raw_business_data
             company = data.get("company", {})
             sales = data.get("sales_invoices", [])
             purchases = data.get("purchase_invoices", [])
 
+            yield ws_prefix
             yield f"🔍 正在分析 {company.get('name', '企业')} 的原始业务数据...\n\n"
             await asyncio.sleep(0.3)
 
@@ -809,11 +806,9 @@ class TaxAgentEngine:
             return
 
         if "报税" in user_message or "filing" in msg_lower:
-            if session.workspace_path and session.taxpayer_id:
-                yield f"我来帮您完成英国 VAT 季度申报。\n\n"
-                yield f"📋 VRN: {session.taxpayer_id} (从 workspace manifest 读取)\n"
-                yield f"📁 Workspace: {session.workspace_path}\n\n"
-                yield f"Mock 模式无法调用 HMRC API — 请切换到 SDK 模式执行真实申报。"
+            if ws_prefix:
+                yield f"我来帮您完成英国 VAT 季度申报。\n\n{ws_prefix}\n"
+                yield "Mock 模式无法调用 HMRC API — 请切换到 SDK 模式执行真实申报。"
             else:
                 yield "我来帮您完成英国 VAT 季度申报。"
                 await asyncio.sleep(0.3)
@@ -863,26 +858,18 @@ class TaxAgentEngine:
             session.status = "done"
 
         else:
-            if session.workspace_path:
-                yield "我是 TaxAgent 智能报税助手。\n\n"
-                yield f"📂 已加载 workspace: {session.workspace_path}\n"
-                if session.taxpayer_id:
-                    yield f"📋 VRN: {session.taxpayer_id}\n"
-                yield "\n我可以帮您：\n"
-                yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
-                yield "2. 查询 HMRC 待申报义务\n"
-                yield "3. 验证申报数据合规性\n"
-                yield "4. 提交 VAT Return 至 HMRC\n\n"
+            yield "我是 TaxAgent 智能报税助手。\n\n"
+            if ws_prefix:
+                yield ws_prefix + "\n"
+            yield "我可以帮您：\n"
+            yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
+            yield "2. 查询 HMRC 待申报义务\n"
+            yield "3. 验证申报数据合规性\n"
+            yield "4. 提交 VAT Return 至 HMRC\n\n"
+            if ws_prefix:
                 yield "Mock 模式功能有限 — 请安装 SDK 并配置 API key 获得完整体验。"
             else:
-                yield "我是 TaxAgent 智能报税助手。\n\n"
-                yield "我可以帮您：\n"
-                yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
-                yield "2. 查询 HMRC 待申报义务\n"
-                yield "3. 验证申报数据合规性\n"
-                yield "4. 提交 VAT Return 至 HMRC\n"
-                yield "5. 查询已提交的申报\n\n"
-                yield "请告诉我您需要什么帮助？"
+                yield "5. 查询已提交的申报\n\n请告诉我您需要什么帮助？"
 
     # ── Helpers ──
 

@@ -1,28 +1,9 @@
 """Workspace Store — case 数据落盘为多文件,让 LLM 用 Read 工具按需读取
 
-设计动机:
-    - 之前 session.raw_business_data 把整本数据灌进 prompt,LLM 失忆 + token 浪费
-    - 现在:每个 case 落盘到 ~/.taxi/workspace/<case_id>/,按字段拆为多个文件
-    - 后端 SDK 配 add_dirs 把这个根目录暴露给 Read 工具
-    - LLM 按需 Read 单文件拿数据,不重复灌 prompt
+布局: ~/.taxi/workspace/<case_id>/  →  manifest.json, sales.json, purchases.json,
+      nine_box.json, warnings.json, source_meta.json, source_docs/*.json
 
-文件布局(以 case-x-uk-standard 为例):
-    ~/.taxi/workspace/case-x-uk-standard/
-        manifest.json          # 公司元信息(name / vrn / period / ...)
-        sales.json             # 销售发票数组
-        purchases.json         # 采购发票数组
-        nine_box.json          # ERP 自报的 9-Box
-        warnings.json          # 解析警告
-        source_meta.json       # 数据源元信息
-        source_docs/           # 发票级 JSON(从 erp_samples 拷过来)
-            *.json
-
-注意:
-    - workspace 是 append-only:切换 case 不删旧文件(LLM 可列表查看)
-    - case_id sanitize:防止路径注入
-    - 文件拆法:沿 ImportResult 真实 keys(sales/purchases/erp_provided_boxes/...)；
-      engine 旧代码期望的 keys(sales_invoices/purchase_invoices/company)不强造,
-      由 business_analyzer 的 translator 翻译
+幂等: manifest.json 已存在时跳过重写,直接返回路径+manifest dict。
 """
 from __future__ import annotations
 
@@ -62,17 +43,19 @@ def _write_json(path: Path, data) -> None:
 def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dict]:
     """确保 case 落盘到 workspace(拆多文件)
 
-    Args:
-        case_id: 案例 ID
-        raw_data: 如果调用方有原始数据(ImportResult dict),直接用;
-                  否则从 fixture (data/erp_samples/<id>/) 加载 + 拆
-
-    Returns:
-        (落盘目录路径, manifest dict) — manifest 包含 name/vrn/period/currency/scenario,
-        调用方据此填充 session.taxpayer_id 等,无需再读文件。
+    如果目标目录已有 manifest.json,直接返回(幂等);否则从 raw_data 或 fixture 写入。
     """
     safe_id = _safe_case_id(case_id)
     target = case_dir(safe_id)
+
+    # 快速路径: workspace 已存在 → 读 manifest 返回,不重写文件
+    manifest_path = target / "manifest.json"
+    if manifest_path.is_file() and raw_data is None:
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                return str(target), json.load(f)
+        except Exception:
+            pass  # 损坏则重建
 
     if raw_data is None:
         loaded = load_demo_case(safe_id)
@@ -83,13 +66,15 @@ def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dic
     # 如果 metadata 为空(如 case-a-uk-subsidiary),回退到 case_summary.json
     metadata = raw_data.get("metadata", {}) or {}
     summary: dict = {}
-    summary_path = SAMPLES_DIR / safe_id / "case_summary.json"
-    if summary_path.is_file():
-        try:
-            with open(summary_path, "r", encoding="utf-8") as f:
-                summary = json.load(f)
-        except Exception:
-            pass
+    # 仅在 metadata 缺少关键字段时才读 case_summary.json(避免不必要的 I/O)
+    if not (metadata.get("vrn") or metadata.get("company")):
+        summary_path = SAMPLES_DIR / safe_id / "case_summary.json"
+        if summary_path.is_file():
+            try:
+                with open(summary_path, "r", encoding="utf-8") as f:
+                    summary = json.load(f)
+            except Exception:
+                pass
     company = {
         "name": metadata.get("company") or summary.get("company") or raw_data.get("company", ""),
         "vrn": metadata.get("vrn") or summary.get("vrn") or raw_data.get("vrn", ""),

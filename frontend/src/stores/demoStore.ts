@@ -3,6 +3,13 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { casePresets, type CasePreset } from '../data/casePresets';
 import type { ImportResult } from '../types';
 
+/** Strip erpData from buffer — v4 migration + partialize share this. */
+function _stripErpData(buf: CaseWorkingBuffer | null): CaseWorkingBuffer | null {
+  if (!buf) return null;
+  const { erpData: _, ...rest } = buf as CaseWorkingBuffer & { erpData?: unknown };
+  return rest as CaseWorkingBuffer;
+}
+
 /** 按 period 隔离的 hub 数据摘要(从 erp_samples loader 拉到的元数据)。 */
 export interface HubSummary {
   salesCount: number;
@@ -265,36 +272,23 @@ export const useDemoStore = create<DemoState>()(
       name: 'taxi:demo-buffer',
       version: 4,
       storage: createJSONStorage(() => localStorage),
-      // 持久化 buffer + selectedPreset(同步)+ erpConnectionOn
-      // action 函数不持久化
-      // v4:buffer.erpData 不再持久化(后端是单一 source of truth,落盘到 ~/.taxi/workspace/)
-      partialize: (state) => {
-        const persistedBuffer = state.buffer
-          ? (() => {
-              const { erpData: _stripped, ...rest } = state.buffer as CaseWorkingBuffer & { erpData: unknown };
-              void _stripped;
-              return rest;
-            })()
-          : null;
-        return {
-          buffer: persistedBuffer,
-          selectedPreset: state.selectedPreset,
-          erpConnectionOn: state.erpConnectionOn,
-          erpnextCredentials: state.erpnextCredentials,
-          hubDataByPeriod: state.hubDataByPeriod,
-        };
-      },
-      // 持久化版本升级时:
-      //   v1 → v2:case 精简后 preset ID 改名,旧 buffer.preset.id 失效,直接 discard
-      //   v2 → v3:补全新增的 erpnextCredentials / hubDataByPeriod 字段(老数据里没有)
-      //   v3 → v4:strip 老 buffer.erpData(后端已接管落盘,前端不再缓存整本)
+      // v4: buffer.erpData 不再持久化(后端落盘到 ~/.taxi/workspace/,前端不再缓存)
+      partialize: (state) => ({
+        buffer: _stripErpData(state.buffer),
+        selectedPreset: state.selectedPreset,
+        erpConnectionOn: state.erpConnectionOn,
+        erpnextCredentials: state.erpnextCredentials,
+        hubDataByPeriod: state.hubDataByPeriod,
+      }),
+      // 持久化版本升级:
+      //   v1→v2: 旧 preset ID 失效, discard
+      //   v2→v3: 补 erpnextCredentials / hubDataByPeriod
+      //   v3→v4: strip buffer.erpData
       migrate: (persistedState, version) => {
         if (version < 2) {
-          // 旧 ID 全部 discard(standard-taxable / real-business-q1 / net-refund / zero-filing)
           return { ...DEFAULT_DEMO_STATE } as any;
         }
         if (version < 3) {
-          // 补默认值
           return {
             ...(persistedState as any),
             erpnextCredentials: (persistedState as any).erpnextCredentials ?? null,
@@ -302,14 +296,8 @@ export const useDemoStore = create<DemoState>()(
           };
         }
         if (version < 4) {
-          // v3 → v4:strip 老 buffer.erpData(后端已接管)
           const s = persistedState as any;
-          if (s.buffer && 'erpData' in s.buffer) {
-            const { erpData: _stripped, ...rest } = s.buffer;
-            void _stripped;
-            return { ...s, buffer: rest };
-          }
-          return s;
+          return { ...s, buffer: _stripErpData(s.buffer) };
         }
         return persistedState as any;
       },

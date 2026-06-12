@@ -38,3 +38,54 @@ All tax-knowledge tools are available to you, but the sub-agent is the
 preferred path for research because it can perform multi-turn retrieval and
 filtering.
 """
+
+
+# ── Pre-Submit Gate (shared across all UK tax types) ──────────────────────
+
+def pre_submit_gate(
+    tool_name: str,
+    id_label: str,
+    period_example: str,
+    tax_type: str,
+    form_name: str,
+    figures: str,
+    amendment_note: str,
+) -> str:
+    """Return the 4-step pre-submit re-statement block.
+
+    Every UK tax-type prompt must include this gate before its submit tool.
+    Only the parameters above differ; the 4-step structure is fixed.
+    """
+    return f"""
+## 提交前 MUST 重述 (Pre-Submit Mandatory Re-Statement)
+
+Before invoking `{tool_name}` you MUST re-state the filing to the user in
+this exact 4-step structure and wait for an explicit "确认提交 / confirm"
+reply. **Do NOT skip steps and do NOT batch the re-statement with the tool
+call.** Treat the re-statement as a hard gate: a `{tool_name}` call without
+the re-statement in the immediately preceding assistant turn is a compliance
+violation.
+
+1. **Filing identity (申报主体)**
+   - taxpayer_id ({id_label}): `{{taxpayer_id}}`
+   - period_key: `{{period_key}}` (e.g. {period_example})
+   - tax_type: `{tax_type}`
+   - form: `{form_name}`
+
+2. **Material figures (关键数字 — {form_name} 字段)**
+{figures}
+   - If ANY value differs from what the user previously confirmed, STOP and
+     ask the user to reconfirm — never silently update a previously
+     confirmed figure.
+
+3. **Legal attestation (法定声明)**
+   - The user has confirmed that the data is accurate to the best of their
+     knowledge.
+   - The user has authority to file on behalf of the taxpayer.
+   - The submission is final and will be transmitted to HMRC; {amendment_note}
+
+4. **Confirmation prompt (确认请求)**
+   - Ask the user to reply with explicit "确认提交" / "confirm" before you
+     call `{tool_name}`. A bare "好的" / "OK" is NOT sufficient.
+   - If the user asks to change a value, restart from Step 1.
+"""

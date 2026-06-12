@@ -38,6 +38,12 @@ except ImportError:
     def create_sdk_mcp_server(**kwargs):
         return None
 
+# ToolAnnotations: 标 destructiveHint(模块级导入,避免每个工具重复 try/except)
+try:
+    from mcp.types import ToolAnnotations
+except ImportError:
+    ToolAnnotations = None  # type: ignore
+
 from backend.models.tax_data import TaxType
 from backend.registry import JurisdictionRegistry
 
@@ -267,12 +273,7 @@ def _make_tool_wrapper(tool_set, method_name: str, meta: dict):
 
     # 应用 SDK 装饰器（如果可用）
     if SDK_AVAILABLE:
-        # C2: 给 submit_* 工具标 destructiveHint=True (LLM 决策时多一层加权)。
-        # mcp 在沙箱默认 Python 路径中可能不可用,inline try/except 降级。
-        try:
-            from mcp.types import ToolAnnotations
-        except ImportError:
-            ToolAnnotations = None  # type: ignore
+        # 给 submit_* 工具标 destructiveHint=True (LLM 决策时多一层加权)
         annotations = (
             ToolAnnotations(destructiveHint=True)
             if (ToolAnnotations is not None and meta["name"].startswith("submit_"))
