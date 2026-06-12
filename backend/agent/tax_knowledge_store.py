@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -81,3 +81,22 @@ class TaxKnowledgeStore:
                 scored.append((score, section))
         scored.sort(key=lambda x: (-x[0], x[1].order))
         return [section for _, section in scored[:top_k]]
+
+    def get_section(
+        self, jurisdiction: str, tax_type: str, title: str,
+    ) -> Optional[KnowledgeSection]:
+        """按 H2 标题取 1 个 section。
+
+        Args:
+            jurisdiction: cc
+            tax_type: tax_type
+            title: 严格匹配的 H2 标题(不含 `##` 前缀)
+
+        Returns:
+            第一个匹配 title 的 KnowledgeSection,或 None(未找到)
+        """
+        sections = self._cache.get((jurisdiction, tax_type), [])
+        for section in sections:
+            if section.title == title:
+                return section
+        return None
