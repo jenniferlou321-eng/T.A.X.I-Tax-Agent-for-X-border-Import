@@ -75,6 +75,27 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════
+# Workspace Reminder (SDK 模式 + mock 模式共用)
+# ═══════════════════════════════════════════════════════════
+
+def _build_workspace_reminder(workspace_path: str) -> str:
+    """统一构造 workspace reminder(SDK 模式 + mock 模式共用)
+
+    行为:
+        - SDK 模式:LLM 看到后用 Read 工具读真实文件
+        - Mock 模式:LLM 看不到 Read 工具,reminder 是占位(用户拍板:附但不指望用)
+    """
+    if not workspace_path:
+        return ""
+    return (
+        f"\n\n[Workspace: {workspace_path}]\n"
+        f"该目录已落盘,内含 manifest/sales/purchases/nine_box 等 JSON。"
+        f"**该路径在整轮会话持续有效**。SDK 模式下用 Read 工具按需读取;"
+        f"Mock 模式下无 Read 工具,LLM 自行从 reminder 推断文件存在性。"
+    )
+
+
+# ═══════════════════════════════════════════════════════════
 # Session State
 # ═══════════════════════════════════════════════════════════
 
@@ -219,13 +240,10 @@ class TaxAgentEngine:
             if period_key:
                 session.period_key = period_key
 
-        # 构建增强消息:不再灌数据摘要,只附 workspace 路径 reminder
+        # 构建增强消息:不再灌数据摘要,只附 workspace reminder
         enriched_message = user_message
         if session.workspace_path:
-            enriched_message += (
-                f"\n\n[Workspace: {session.workspace_path}]\n"
-                f"按需 Read 该目录下文件(manifest/sales/purchases/nine_box/...)即可,不要让用户重发。"
-            )
+            enriched_message += _build_workspace_reminder(session.workspace_path)
         elif session.line_items and "数据" not in user_message and "data" not in user_message.lower():
             enriched_message += f"\n\n[系统: 用户已上传 {len(session.line_items)} 条 line items]"
 
@@ -706,6 +724,11 @@ class TaxAgentEngine:
             return
 
         # UK Mock Mode (保持不变)
+        # workspace reminder 也注入 mock 模式 — 虽说 mock 模式 LLM 没有 Read 工具,
+        # 但用户在 demo 演示时仍能从 chat 看到"workspace 已落盘"的提示
+        if session.workspace_path:
+            yield f"📂 {session.workspace_path} (workspace 已落盘 — mock 模式无 Read 工具)\n\n"
+
         if getattr(session, "raw_business_data", None) and ("分析" in user_message or "analyze" in msg_lower or "计算" in msg_lower or "报税" in msg_lower):
             data = session.raw_business_data
             company = data.get("company", {})
