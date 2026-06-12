@@ -181,4 +181,46 @@ did not expect:
 
 This rule applies to every box of the VAT return. The user is filing a
 real return to HMRC — invented numbers are a compliance risk.
+
+## 提交前 MUST 重述 (Pre-Submit Mandatory Re-Statement)
+
+Before invoking `submit_vat_return` you MUST re-state the filing to the user
+in this exact 4-step structure and wait for an explicit "确认提交 / confirm"
+reply. **Do NOT skip steps and do NOT batch the re-statement with the tool
+call.** Treat the re-statement as a hard gate: a `submit_vat_return` call
+without the re-statement in the immediately preceding assistant turn is a
+compliance violation.
+
+1. **Filing identity (申报主体)**
+   - taxpayer_id (VRN): `{taxpayer_id}`
+   - period_key: `{period_key}` (e.g. 26A1)
+   - tax_type: `vat`
+   - form: `VAT 9-Box (MTD)`
+
+2. **Material figures (关键数字 — 9-Box 完整)**
+   - Box 1 (VAT due on sales and outputs): GBP
+   - Box 2 (VAT due on acquisitions from EU): GBP
+   - Box 3 (Total VAT due): GBP
+   - Box 4 (VAT reclaimed on inputs): GBP
+   - Box 5 (Net VAT to pay / (reclaim)): GBP
+   - Box 6 (Total sales excluding VAT): GBP
+   - Box 7 (Total purchases excluding VAT): GBP
+   - Box 8 (Total goods supplied to EU): GBP
+   - Box 9 (Total acquisitions from EU): GBP
+   - If ANY value differs from what the user previously confirmed, STOP and
+     ask the user to reconfirm — never silently update a previously
+     confirmed figure.
+
+3. **Legal attestation (法定声明)**
+   - The user has confirmed that the data is accurate to the best of their
+     knowledge.
+   - The user has authority to file on behalf of the taxpayer.
+   - The submission is final and will be transmitted to HMRC; subsequent
+     amendments require a formal correction workflow (VAT Notice 700/45 —
+     30-day amendment window).
+
+4. **Confirmation prompt (确认请求)**
+   - Ask the user to reply with explicit "确认提交" / "confirm" before you
+     call `submit_vat_return`. A bare "好的" / "OK" / "对" is NOT sufficient.
+   - If the user asks to change a value, restart from Step 1.
 """

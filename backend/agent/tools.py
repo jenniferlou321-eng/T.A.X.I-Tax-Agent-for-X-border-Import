@@ -267,10 +267,22 @@ def _make_tool_wrapper(tool_set, method_name: str, meta: dict):
 
     # 应用 SDK 装饰器（如果可用）
     if SDK_AVAILABLE:
+        # C2: 给 submit_* 工具标 destructiveHint=True (LLM 决策时多一层加权)。
+        # mcp 在沙箱默认 Python 路径中可能不可用,inline try/except 降级。
+        try:
+            from mcp.types import ToolAnnotations
+        except ImportError:
+            ToolAnnotations = None  # type: ignore
+        annotations = (
+            ToolAnnotations(destructiveHint=True)
+            if (ToolAnnotations is not None and meta["name"].startswith("submit_"))
+            else None
+        )
         return tool(
             meta["name"],
             meta["description"],
             meta["input_schema"],
+            annotations=annotations,
         )(_wrapper)
     return _wrapper
 
