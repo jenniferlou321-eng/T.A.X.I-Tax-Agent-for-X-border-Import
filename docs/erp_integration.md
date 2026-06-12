@@ -79,3 +79,11 @@ T.A.X.I. v1 ERPNext 接入改为**手动 Pull 模式**:
 ## 重新启用自动 Push
 
 如需切换回 push 模式,取消 `hooks.py` 中 `doc_events` 注释并重启 bench。
+
+## Web Form `taxi-link` 实装状态(2026-06-13)
+
+通过 `frappe.get_doc({"doctype": "Web Form", ...}).insert()` 在 DB 写入,使用 `is_standard=0` 绕开 Frappe v15 的 `validate()` 检查(`is_standard=1` 需要 `developer_mode=1`,而 `developer_mode=0` 时新 Web Form 的 `self.reload()` 在 `validate` 钩子里会抛 `DoesNotExistError`)。
+
+访问 `http://my.local:9001/taxi-link` → 301 → `/taxi-link/new` → 200 OK,X-Page-Name=`taxi-link/new`。显示 TAXI URL 字段 + 简介文字 + 提交按钮。
+
+注意: 这个 Web Form `is_standard=0`,意味着它**不会**作为 fixture 在 `bench migrate` 时被自动重装(只有 `is_standard=1` 的会被 fixtures 机制导出/导入)。如果未来需要重装站点,要手动跑 8 行 Python 重新创建。
