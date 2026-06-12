@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import ImportPreviewTable from '../components/ImportPreviewTable';
+import ImportPreviewTable, { type RawInvoice } from '../components/ImportPreviewTable';
 import type { SalesTransaction, PurchaseTransaction } from '../types';
 
 export default function ImportPreviewPage() {
@@ -11,19 +11,29 @@ export default function ImportPreviewPage() {
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<SalesTransaction[]>([]);
   const [purchases, setPurchases] = useState<PurchaseTransaction[]>([]);
-  const [raw, setRaw] = useState<any[]>([]);
+  const [raw, setRaw] = useState<RawInvoice[]>([]);
   const [count, setCount] = useState<{ sales: number; purchases: number; cancelled: number; amends: number; total: number } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     api.erp.erpnextHubSummary(period)
       .then((data) => {
-        setSales(data.sales as any);
-        setPurchases(data.purchases as any);
+        if (cancelled) return;
+        setSales(data.sales);
+        setPurchases(data.purchases);
         setRaw(data.raw);
         setCount(data.count);
       })
-      .catch((e) => console.error(e))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('Failed to load hub summary:', e);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [period]);
 
   if (loading) return <div className="p-6">加载中...</div>;

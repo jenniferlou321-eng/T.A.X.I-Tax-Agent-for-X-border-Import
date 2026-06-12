@@ -1,9 +1,16 @@
 import type { SalesTransaction, PurchaseTransaction } from '../types';
 
+export interface RawInvoice {
+  id: string;
+  cancelled: boolean;
+  is_amend: boolean;
+  parent?: string | null;
+}
+
 interface Props {
   sales: SalesTransaction[];
   purchases: PurchaseTransaction[];
-  raw?: Array<{ id: string; cancelled: boolean; is_amend: boolean; parent?: string }>;
+  raw?: RawInvoice[];
 }
 
 export default function ImportPreviewTable({ sales, purchases, raw = [] }: Props) {

@@ -175,6 +175,7 @@ export const api = {
         sales: SalesTransaction[];
         purchases: PurchaseTransaction[];
         count: { sales: number; purchases: number; cancelled: number; amends: number; total: number };
+        raw: Array<{ id: string; cancelled: boolean; is_amend: boolean; parent?: string | null }>;
       }>(`/api/erp/hub/summary?period=${encodeURIComponent(period)}`),
   },
 };
