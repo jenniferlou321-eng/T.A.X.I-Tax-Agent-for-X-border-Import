@@ -22,6 +22,7 @@ from .tools import (
     SDK_AVAILABLE,
     set_registry,
 )
+from backend.services.audit_log import AuditLog
 
 # ── SDK 导入（带优雅降级） ──
 if SDK_AVAILABLE:
@@ -140,6 +141,9 @@ class TaxAgentEngine:
         # Registry & MCP Servers
         self._registry = registry
         self._mcp_servers: dict[tuple[str, str], dict] = {}
+
+        # H3: AuditLog 实例,供 _sdk_chat 记录 tool_invoked / tool_completed / agent_completed 事件
+        self._audit: AuditLog = AuditLog()
 
         if registry:
             set_registry(registry)
@@ -346,6 +350,12 @@ class TaxAgentEngine:
                         "ANTHROPIC_DEFAULT_SONNET_MODEL": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL"),
                         "ANTHROPIC_DEFAULT_HAIKU_MODEL": os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
                         "ANTHROPIC_DEFAULT_OPUS_MODEL": os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+                        # H4: OpenTelemetry env 透传 (默认 off — 宿主没设就全丢)
+                        "CLAUDE_CODE_ENABLE_TELEMETRY": os.environ.get("CLAUDE_CODE_ENABLE_TELEMETRY"),
+                        "OTEL_TRACES_EXPORTER": os.environ.get("OTEL_TRACES_EXPORTER"),
+                        "OTEL_METRICS_EXPORTER": os.environ.get("OTEL_METRICS_EXPORTER"),
+                        "OTEL_LOGS_EXPORTER": os.environ.get("OTEL_LOGS_EXPORTER"),
+                        "OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                         "IS_SANDBOX": "1",
                         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
                     }.items()
@@ -453,6 +463,11 @@ class TaxAgentEngine:
                                 getattr(block, "id", None)
                                 or f"tool_{uuid.uuid4().hex[:8]}"
                             )
+                            # H3: 记录工具调用 (tool_invoked)
+                            self._audit.record(
+                                session.session_id, "SDK_CHAT", "tool_invoked",
+                                {"tool": block.name, "tool_id": tool_id},
+                            )
                             yield {
                                 "__agui__": "tool_start",
                                 "tool_call_id": tool_id,
@@ -490,6 +505,11 @@ class TaxAgentEngine:
                         "tool_call_id": tool_id,
                         "content": content_str,
                     }
+                    # H3: 记录工具完成 (tool_completed; tool 名称不在 scope)
+                    self._audit.record(
+                        session.session_id, "SDK_CHAT", "tool_completed",
+                        {"tool_id": tool_id, "content_len": len(content_str)},
+                    )
 
                 elif isinstance(msg, SystemMessage):
                     if msg.subtype == "notification":
@@ -503,6 +523,11 @@ class TaxAgentEngine:
                         if msg.total_cost_usd:
                             yield f"\n💰 本次对话消耗: ${msg.total_cost_usd:.4f}\n"
                         yield "\n---\n"
+                    # H3: 记录 agent_completed (成功 / 错误 / 成本)
+                    self._audit.record(
+                        session.session_id, "SDK_CHAT", "agent_completed",
+                        {"is_error": msg.is_error, "total_cost_usd": msg.total_cost_usd},
+                    )
 
         except Exception as e:
             yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax (无 MCP 工具)...\n"
