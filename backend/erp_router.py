@@ -162,7 +162,7 @@ async def post_erpnext_pull(payload: dict):
     """手动 Pull:从 T.A.X.I. 主动拉 ERPNext 数据。
 
     Body: {
-      "url": "http://my.local:8000",
+      "url": "http://my.local:9001",
       "api_key": "...", "api_secret": "...",
       "period": "Q1_2026",
       "period_start": "2026-01-01", "period_end": "2026-03-31",

@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function ErpCredentialsModal({ initial, onSave, onClose }: Props) {
-  const [url, setUrl] = useState(initial?.url ?? 'http://my.local:8000');
+  const [url, setUrl] = useState(initial?.url ?? 'http://my.local:9001');
   const [apiKey, setApiKey] = useState(initial?.apiKey ?? '');
   const [apiSecret, setApiSecret] = useState(initial?.apiSecret ?? '');
 
@@ -50,7 +50,7 @@ export default function ErpCredentialsModal({ initial, onSave, onClose }: Props)
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="w-full input"
-              placeholder="http://my.local:8000"
+              placeholder="http://my.local:9001"
               autoComplete="off"
               autoCapitalize="off"
               spellCheck={false}

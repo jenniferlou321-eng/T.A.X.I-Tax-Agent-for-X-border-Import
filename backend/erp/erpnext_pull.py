@@ -43,7 +43,7 @@ async def pull_invoices(
     """拉 ERPNext 列表 + 转换 → list[HubInvoice]。
 
     Args:
-        base_url: e.g. "http://my.local:8000"
+        base_url: e.g. "http://my.local:9001"
         api_key/api_secret: ERPNext API 凭证
         period_start/period_end: posting_date 范围
         doctype: "Sales Invoice" 或 "Purchase Invoice"

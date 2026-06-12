@@ -26,6 +26,10 @@ def create_app() -> FastAPI:
         # Default Vite dev/preview port for T.A.X.I. (port 9000).
         "http://localhost:9000",
         "http://127.0.0.1:9000",
+        # ERPNext web (Frappe) is on 9001 (was 8000 before 2026-06-12).
+        "http://my.local:9001",
+        "http://localhost:9001",
+        "http://127.0.0.1:9001",
     ]
     # 允许从环境变量追加额外 origin（生产环境把公网域名加进来，逗号分隔）
     # 例：CORS_ORIGINS="https://tax.example.com,https://tax-staging.example.com"
