@@ -8,6 +8,8 @@ import FilingDetailPage from './pages/FilingDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import AgentChatPage from './pages/AgentChatPage'
 import CasePreviewPage from './pages/CasePreviewPage'
+import ImportHubPage from './pages/ImportHubPage'
+import ImportPreviewPage from './pages/ImportPreviewPage'
 
 function App() {
   return (
@@ -22,6 +24,8 @@ function App() {
         <Route path="/filings/:id" element={<FilingDetailPage />} />
         <Route path="/agent" element={<AgentChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/import" element={<ImportHubPage />} />
+        <Route path="/import/preview" element={<ImportPreviewPage />} />
       </Route>
     </Routes>
   )

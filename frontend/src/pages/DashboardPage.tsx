@@ -159,10 +159,21 @@ function DashboardPage() {
         </div>
       )}
 
+      {/* Import Hub entry — 外部数据流入口(在 case grid 上方,作为独立入口) */}
+      <div className="fade-in flex justify-end">
+        <button
+          onClick={() => navigate('/import')}
+          className="btn btn-primary"
+          data-testid="dashboard-import-entry"
+        >
+          ⬇ 导入外部数据
+        </button>
+      </div>
+
       {/* Quick Demo Scenarios */}
       <div className="fade-in">
         <h2 className="text-lg font-semibold text-fg mb-3">快速演示场景</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {casePresets.map((preset) => (
             <CasePresetCard
               key={preset.id}
