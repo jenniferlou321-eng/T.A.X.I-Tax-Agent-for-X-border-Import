@@ -1,5 +1,14 @@
 # UK VAT Rules
 
+## Rates
+
+<!-- format: json -->
+```json
+{"standard": 0.20, "reduced": 0.05, "zero": 0.00}
+```
+
+<!-- source: https://www.gov.uk/vat-rates -->
+
 ## Standard Rate
 The standard rate of VAT in the UK is 20%. It applies to most goods and
 services that are not zero-rated, reduced-rated, or exempt.
