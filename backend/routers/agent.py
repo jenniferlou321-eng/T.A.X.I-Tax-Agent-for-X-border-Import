@@ -50,34 +50,30 @@ async def agent_chat(
     session_id: Optional[str] = Query(None),
     message: str = Query(...),
     raw_data: Optional[str] = Query(None),
-    case_id: Optional[str] = Query(None),  # 新增:让后端落盘到 workspace
+    case_id: Optional[str] = Query(None),
+    case_ids: Optional[str] = Query(None),  # 多管辖地:逗号分隔
     thread_id: Optional[str] = Query(None),
     run_id: Optional[str] = Query(None),
 ):
     """HTTP SSE 流式聊天接口 (AG-UI 兼容)
 
-    保留 query string 入口（dashboard / loadSampleData 路径）以避免破坏
-    前端现有调用。**输出**遵循 AG-UI 事件协议：data: {type:..., ...}\\n\\n
-    事件序列 (RUN_STARTED → TEXT_MESSAGE_* → RUN_FINISHED 等)，不再
-    是旧的 {chunk, session_id, done} 格式。
-
-    case_id 优先:让后端把数据落盘到 ~/.taxi/workspace/<case_id>/,LLM
-    通过 Read 工具按需读取;raw_data 保留兼容老客户端。
-
-    如需走标准 AG-UI 请求体，使用 POST /api/agent/agui 端点。
+    case_ids 优先(多管辖地):逗号分隔的 case_id 列表,后端为每个创建 JurisdictionSlot。
+    case_id 单个(向后兼容)。
+    raw_data 保留兼容老客户端。
     """
     engine = get_engine()
     sid = session_id or str(uuid.uuid4())
-    tid = thread_id or sid   # AG-UI thread_id 与 session_id 双向映射
+    tid = thread_id or sid
     rid = run_id or str(uuid.uuid4())
 
-    # 解析原始业务数据
     raw_business_data = None
     if raw_data:
         try:
             raw_business_data = json.loads(raw_data)
         except json.JSONDecodeError:
             pass
+
+    parsed_case_ids = case_ids.split(",") if case_ids else None
 
     async def event_stream():
         async for sse in stream_agui_events(
@@ -88,6 +84,7 @@ async def agent_chat(
             user_message=message,
             raw_business_data=raw_business_data,
             case_id=case_id,
+            case_ids=parsed_case_ids,
         ):
             yield sse
 
@@ -131,8 +128,12 @@ async def agent_agui(input_data: "RunAgentInput"):
 
     # AG-UI 标准 body 没有 case_id 字段;从 forwardedProps / state 提取
     case_id = None
+    case_ids = None
     if getattr(input_data, "forwarded_props", None):
         case_id = input_data.forwarded_props.get("case_id")
+        case_ids_str = input_data.forwarded_props.get("case_ids")
+        if case_ids_str:
+            case_ids = case_ids_str.split(",")
     if not case_id and getattr(input_data, "state", None):
         case_id = input_data.state.get("case_id") if isinstance(input_data.state, dict) else None
 
@@ -144,6 +145,7 @@ async def agent_agui(input_data: "RunAgentInput"):
             session=engine._get_or_create_session(sid),
             user_message=user_message,
             case_id=case_id,
+            case_ids=case_ids,
         ):
             yield sse
 
@@ -172,7 +174,10 @@ async def agent_websocket(websocket: WebSocket):
             session_id = data.get("session_id") or str(uuid.uuid4())
             message = data.get("message", "")
             uploaded = data.get("data")
-            case_id = data.get("case_id")  # 新增:case 标识,落盘到 workspace
+            case_id = data.get("case_id")
+            # 多管辖地:case_ids 为逗号分隔字符串
+            case_ids_str = data.get("case_ids")
+            case_ids = case_ids_str.split(",") if case_ids_str else None
 
             # 发送会话 ID（首次）
             await websocket.send_json({
@@ -192,6 +197,7 @@ async def agent_websocket(websocket: WebSocket):
                 uploaded_data=uploaded,
                 raw_business_data=raw_business_data,
                 case_id=case_id,
+                case_ids=case_ids,
             ):
                 await websocket.send_json({
                     "type": "chunk",

@@ -28,6 +28,8 @@ export interface CasePreset {
   };
   /** 后端 case 目录名(也是 erp_samples 下的子目录名) */
   erpCaseId: string;
+  /** 多管辖地: 多个 case_id 列表(优先于 erpCaseId) */
+  erpCaseIds?: string[];
   /** Case B 专用: 引用 frontend/src/data/cnParentFiling.json */
   groupDataRef?: 'cnParentFiling';
 }
@@ -82,10 +84,10 @@ export const casePresets: CasePreset[] = [
     erpCaseId: 'case-a-uk-subsidiary',
   },
 
-  // ── Case B: 跨境 — CN 母公司申报 ────────────────────────
+  // ── Case B: 跨境 — CN 母 + UK 子(多管辖地) ────────────────
   {
     id: 'case-b-cn-parent',
-    title: '跨境集团 · CN 母公司申报',
+    title: '跨境集团 · CN 母 + UK 子',
     description: 'Shenzhen TechFlow 2026 Q1:¥8.6M 营收,报 CN VAT ¥551k + CIT ¥950k + WHT ¥115.5k + TP 调整 +¥320k。集团对 UK 子 ¥2.1M IT 服务(6% VAT),同期资料 / DAC6 C1(b) / BEPS 2.0。',
     icon: 'Building',
     // CN 不是 9-Box 体系,lineItems 为空;数字在 cnParentFiling.json 的 groupDataRef 指向里
@@ -96,6 +98,7 @@ export const casePresets: CasePreset[] = [
       tax_id_type: 'uscc',
     },
     erpCaseId: 'case-b-cn-parent',
+    erpCaseIds: ['case-b-cn-parent', 'case-a-uk-subsidiary'],  // CN + UK 双国
     groupDataRef: 'cnParentFiling',
   },
 ];

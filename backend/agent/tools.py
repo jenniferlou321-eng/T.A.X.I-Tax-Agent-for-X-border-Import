@@ -383,18 +383,33 @@ def create_mcp_servers(registry: JurisdictionRegistry | None = None) -> dict[tup
     return servers
 
 
-def get_allowlist_for(jurisdiction: str, tax_type: str = "vat") -> list[str]:
-    """获取指定管辖地的工具白名单
+def get_multi_jurisdiction_allowlist(
+    slots: list[tuple[str, str, str]],  # [(cc, tt, ws_path)]
+) -> list[str]:
+    """构建多管辖地允许列表。
 
-    Returns:
-        ["mcp__tax_agent_uk_vat__get_vat_obligations", ...]
+    对每个 (cc, tt) 生成通配符 mcp__tax_agent_{cc}_{tt}__*,
+    再加上全局 KB 通配符 mcp__tax_agent_global_tax_kb__*。
+    通配符比逐一列举更简洁,且新增工具时自动覆盖。
     """
-    registry = get_registry()
-    adapter = registry.get(jurisdiction)
-    tool_set = adapter.get_agent_tools(TaxType(tax_type))
-    if tool_set is None:
-        return []
-    return tool_set.get_allowlist()
+    allowlist: list[str] = []
+    seen: set[str] = set()
+    for cc, tt, _ in slots:
+        key = f"{cc}_{tt}"
+        if key in seen:
+            continue
+        seen.add(key)
+        allowlist.append(f"mcp__tax_agent_{cc}_{tt}__*")
+    # 全局税法知识库
+    allowlist.append("mcp__tax_agent_global_tax_kb__*")
+    # 内置工具(Read 读取 workspace, Glob/Grep 辅助搜索)
+    allowlist.extend(["Read", "Glob", "Grep"])
+    return allowlist
+
+
+def get_allowlist_for(jurisdiction: str, tax_type: str = "vat") -> list[str]:
+    """向后兼容: 单管辖地 allowlist。新代码用 get_multi_jurisdiction_allowlist。"""
+    return get_multi_jurisdiction_allowlist([(jurisdiction, tax_type, "")])
 
 
 def get_all_allowlists() -> dict[str, list[str]]:

@@ -1,7 +1,7 @@
 """TaxAgent Engine — Claude Agent SDK 核心引擎（多管辖地版）
 
 基于 ClaudeSDKClient 的智能报税 Agent。
-支持多管辖地/税种的动态 MCP Server 切换。
+支持多管辖地/税种并行：一个 session 挂载所有 MCP server,LLM 用 namespace 自路由。
 """
 
 from __future__ import annotations
@@ -15,10 +15,11 @@ from typing import AsyncIterator, Optional
 
 import httpx  # 用于 SDK 不可用时直连 MiniMax /v1/messages
 
-from .prompts import get_system_prompt
+from .prompts import get_system_prompt, get_multi_jurisdiction_prompt
 from .tools import (
     create_mcp_servers,
     get_allowlist_for,
+    get_multi_jurisdiction_allowlist,
     SDK_AVAILABLE,
     set_registry,
 )
@@ -78,15 +79,62 @@ else:
 # Workspace Reminder (SDK 模式 + mock 模式共用)
 # ═══════════════════════════════════════════════════════════
 
-def _build_workspace_reminder(workspace_path: str) -> str:
-    """构造 workspace reminder — 告诉 LLM 读 manifest 而非索要 VRN。"""
-    if not workspace_path:
+def _build_multi_workspace_reminder(slots: list[JurisdictionSlot]) -> str:
+    """构造多管辖地 workspace reminder — 列出所有 workspace 路径。"""
+    active = [s for s in slots if s.workspace_path]
+    if not active:
         return ""
-    return (
-        f"\n\n[Workspace: {workspace_path}]\n"
-        f"**先读 manifest.json 获取公司名/VRN/期间,再按需读 sales.json / purchases.json 等。**"
-        f"**该路径在整轮会话持续有效,不要让用户重发数据,不要向用户索要 VRN/期间等已存在于 manifest 的信息。**"
+    if len(active) == 1:
+        s = active[0]
+        return (
+            f"\n\n[Workspace: {s.workspace_path}]\n"
+            f"**先读 manifest.json 获取公司名/VRN/期间,再按需读 sales.json / purchases.json 等。**"
+            f"**该路径在整轮会话持续有效,不要让用户重发数据,不要向用户索要 VRN/期间等已存在于 manifest 的信息。**"
+        )
+    lines = ["\n\n[Workspaces]"]
+    for s in active:
+        cc_label = s.jurisdiction.upper()
+        tt_label = s.tax_type.replace("_", " ").title()
+        lines.append(f"- {cc_label} {tt_label}: {s.workspace_path}")
+    lines.append(
+        "**先读各目录下的 manifest.json 获取公司名/纳税人ID/期间,再按需读其他文件。**"
+        "**这些路径在整轮会话持续有效,不要让用户重发数据。**"
     )
+    return "\n".join(lines)
+
+
+def _infer_jurisdiction_from_case_id(case_id: str) -> tuple[str, str]:
+    """从 case_id 提取 (jurisdiction, tax_type)。"""
+    cid = case_id.lower()
+    cc = "uk"
+    for c in ("uk", "cn", "de", "fr", "testland"):
+        if f"-{c}-" in cid or cid.startswith(c):
+            cc = c
+            break
+    tt = "vat"
+    if "corporation_tax" in cid or "-ct-" in cid:
+        tt = "corporation_tax"
+    elif "self_assessment" in cid or "-sa-" in cid:
+        tt = "self_assessment"
+    elif "paye" in cid:
+        tt = "paye"
+    elif "stamp_duty" in cid or "-sdlt-" in cid:
+        tt = "stamp_duty"
+    return cc, tt
+
+
+# 通用 workspace 目录布局说明(追加到 system_prompt 末尾)
+_WORKSPACE_INSTRUCTION = (
+    "\n\n[Workspace]\n"
+    "Case data is on disk at ~/.taxi/workspace/<case_id>/. "
+    "Files: manifest.json (company name, VRN, period), sales.json, purchases.json, "
+    "nine_box.json, warnings.json, source_meta.json, and source_docs/*.json. "
+    "**CRITICAL: When a workspace path is provided in the user message, you MUST read "
+    "manifest.json FIRST before responding.** It contains VRN, company name, and period — "
+    "never ask the user for this information. After reading manifest, use the Read tool "
+    "to load any other files you need (sales.json, purchases.json, etc.). "
+    "Do NOT ask the user to resend data. The workspace path remains valid for the entire session."
+)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -94,22 +142,85 @@ def _build_workspace_reminder(workspace_path: str) -> str:
 # ═══════════════════════════════════════════════════════════
 
 @dataclass
+class JurisdictionSlot:
+    """一个活跃的 (jurisdiction, tax_type) 绑定。"""
+    jurisdiction: str
+    tax_type: str = "vat"
+    workspace_path: str = ""
+    taxpayer_id: str = ""
+    period_key: str = ""
+
+
+@dataclass
 class AgentSession:
-    """Agent 会话状态（补充 SDK 原生会话的元数据）"""
+    """Agent 会话状态（补充 SDK 原生会话的元数据）
+
+    多管辖地支持: jurisdictions 列表替代原来的单一 jurisdiction 字段。
+    向后兼容: 通过 @property 访问旧字段名,零修改调用方。
+    """
     session_id: str
     user_id: str = "anonymous"
-    jurisdiction: str = ""           # 空字符串 = 未确定，由首次交互推断
-    tax_type: str = "vat"
-    taxpayer_id: str = ""            # 通用纳税人识别号（VRN, Steuernummer, USCC 等）
-    period_key: str = ""
+    jurisdictions: list[JurisdictionSlot] = field(default_factory=list)
     status: str = "idle"             # idle | chatting | calculating | confirming | submitting | done
     line_items: list[dict] = field(default_factory=list)
-    raw_business_data: Optional[dict] = None  # deprecated: 不再被 prompt 路径使用;保留字段避免破坏 session store
-    workspace_path: str = ""  # 新增:workspace 目录路径(给 LLM 看),由 raw_business_data 落盘后填
+    raw_business_data: Optional[dict] = None  # deprecated: 保留字段避免破坏 session store
     _case_id: str = ""  # 内部:首次拿到 case_id 后缓存,后续轮次复用
     messages: list[dict] = field(default_factory=list)
-    # SDK client cache (按 jurisdiction 缓存，切换 jurisdiction 时重建)
-    _clients: dict[str, ClaudeSDKClient] = field(default_factory=dict)
+    # 单一 SDK client(挂载所有 MCP server),jurisdictions 变化时重建
+    _client: Optional[ClaudeSDKClient] = None
+    _mounted_jurisdictions_hash: str = ""  # 追踪当前 client 挂载了哪些 jurisdiction
+
+    # ── 向后兼容 property ──
+
+    @property
+    def jurisdiction(self) -> str:
+        return self.jurisdictions[0].jurisdiction if self.jurisdictions else ""
+
+    @jurisdiction.setter
+    def jurisdiction(self, v: str) -> None:
+        if v and (not self.jurisdictions or self.jurisdictions[0].jurisdiction != v):
+            if self.jurisdictions:
+                self.jurisdictions[0].jurisdiction = v
+            else:
+                self.jurisdictions.append(JurisdictionSlot(jurisdiction=v))
+
+    @property
+    def tax_type(self) -> str:
+        return self.jurisdictions[0].tax_type if self.jurisdictions else "vat"
+
+    @tax_type.setter
+    def tax_type(self, v: str) -> None:
+        if self.jurisdictions:
+            self.jurisdictions[0].tax_type = v
+        else:
+            self.jurisdictions.append(JurisdictionSlot(jurisdiction="uk", tax_type=v))
+
+    @property
+    def taxpayer_id(self) -> str:
+        return self.jurisdictions[0].taxpayer_id if self.jurisdictions else ""
+
+    @taxpayer_id.setter
+    def taxpayer_id(self, v: str) -> None:
+        if self.jurisdictions:
+            self.jurisdictions[0].taxpayer_id = v
+
+    @property
+    def period_key(self) -> str:
+        return self.jurisdictions[0].period_key if self.jurisdictions else ""
+
+    @period_key.setter
+    def period_key(self, v: str) -> None:
+        if self.jurisdictions:
+            self.jurisdictions[0].period_key = v
+
+    @property
+    def workspace_path(self) -> str:
+        return self.jurisdictions[0].workspace_path if self.jurisdictions else ""
+
+    @workspace_path.setter
+    def workspace_path(self, v: str) -> None:
+        if self.jurisdictions:
+            self.jurisdictions[0].workspace_path = v
 
 
 # ═══════════════════════════════════════════════════════════
@@ -120,9 +231,9 @@ class TaxAgentEngine:
     """TaxAgent 智能报税引擎（多管辖地）
 
     支持:
-        - 动态 MCP Server: 每个管辖地/税种独立 server
-        - 动态工具白名单: 按 session.jurisdiction 过滤
-        - 动态系统提示: 按 session.jurisdiction 加载对应法规知识
+        - 多管辖地并行: 一个 session 挂载所有 MCP server
+        - Namespace 路由: LLM 通过 mcp__tax_agent_{cc}_{tt}__ 自路由
+        - 动态系统提示: 按活跃 jurisdictions 组合对应法规知识
 
     用法:
         from backend import JurisdictionRegistry
@@ -183,6 +294,7 @@ class TaxAgentEngine:
         raw_business_data: Optional[dict] = None,
         jurisdiction: Optional[str] = None,
         case_id: Optional[str] = None,
+        case_ids: Optional[list[str]] = None,
     ) -> AsyncIterator[str]:
         """与 Agent 对话，流式返回响应文本。
 
@@ -191,89 +303,100 @@ class TaxAgentEngine:
             user_message: 用户输入
             uploaded_data: 用户上传的 line items（可选）
             raw_business_data: 用户上传的原始企业数据（可选）
-            jurisdiction: 强制指定管辖地（可选，否则从会话状态推断）
-            case_id: 案例标识(可选)。落盘到 ~/.taxi/workspace/<case_id>/
+            jurisdiction: 强制指定管辖地（可选，否则从 case_id 推断）
+            case_id: 单个案例标识(向后兼容)
+            case_ids: 多个案例标识(多管辖地),优先于 case_id
 
         Yields:
             流式文本片段
         """
         session = self._get_or_create_session(session_id)
 
-        # 缓存 case_id(session 首次拿到后复用,后续轮次不依赖 query string)
-        if case_id:
-            session._case_id = case_id
-            # 从 case_id 推断管辖地(case-x-uk-* → uk)
-            if not session.jurisdiction:
-                cid_lower = case_id.lower()
-                for cc in ("uk", "cn", "de", "fr"):
-                    if f"-{cc}-" in cid_lower or cid_lower.startswith(cc):
-                        session.jurisdiction = cc
-                        break
+        # ── 处理 case_ids / case_id → JurisdictionSlot ──
+        effective_case_ids = case_ids or ([case_id] if case_id else [])
+        for cid in effective_case_ids:
+            cc, tt = _infer_jurisdiction_from_case_id(cid)
+            # 缓存首个 case_id(向后兼容 _case_id 属性)
+            if not session._case_id:
+                session._case_id = cid
+            # 避免重复追加同 (cc, tt)
+            if not any(s.jurisdiction == cc and s.tax_type == tt for s in session.jurisdictions):
+                slot = JurisdictionSlot(jurisdiction=cc, tax_type=tt)
+                session.jurisdictions.append(slot)
 
-        # 处理管辖地切换
-        if jurisdiction:
-            session.jurisdiction = jurisdiction
-        # 如果 raw_business_data 中有公司信息，自动推断管辖地
-        elif raw_business_data and not session.jurisdiction:
-            # TODO: 根据 VAT scheme / 公司注册地推断
-            session.jurisdiction = "uk"
+        # 强制指定管辖地(覆盖推断)
+        if jurisdiction and not session.jurisdictions:
+            session.jurisdictions.append(JurisdictionSlot(jurisdiction=jurisdiction))
+        elif jurisdiction:
+            session.jurisdictions[0].jurisdiction = jurisdiction
 
-        # 处理上传数据
+        # 如果 raw_business_data 中有公司信息且无任何 jurisdiction → 默认 uk
+        if raw_business_data and not session.jurisdictions:
+            session.jurisdictions.append(JurisdictionSlot(jurisdiction="uk"))
+
+        # ── 处理上传数据 ──
         if uploaded_data:
             session.line_items = uploaded_data
             yield "📎 已接收上传数据，共 {} 条记录\n".format(len(uploaded_data))
 
-        # Workspace 落盘: case_id 存在就落盘(不论是否有 raw_business_data)
-        # 如果只有 case_id 没有 raw_data,ensure_case 内部会从 fixture 加载
-        must_ensure = bool(session._case_id) or bool(raw_business_data)
-        if must_ensure and not session.workspace_path:
-            effective_case_id = session._case_id or "default"
+        # ── Workspace 落盘 ──
+        if effective_case_ids:
+            for i, cid in enumerate(effective_case_ids):
+                slot = session.jurisdictions[i] if i < len(session.jurisdictions) else None
+                if slot and not slot.workspace_path:
+                    try:
+                        # 首个 case_id 带 raw_business_data(如有),其余从 fixture 加载
+                        ws_raw = raw_business_data if (i == 0 and raw_business_data) else None
+                        ws_path, manifest = ensure_case(cid, ws_raw)
+                        slot.workspace_path = ws_path
+                        yield f"📂 workspace 已就绪: {ws_path}\n"
+                        # 从 manifest 提取 VRN / period
+                        if manifest.get("vrn") and not slot.taxpayer_id:
+                            slot.taxpayer_id = manifest["vrn"]
+                        if not slot.period_key:
+                            if manifest.get("period_key"):
+                                slot.period_key = manifest["period_key"]
+                            elif manifest.get("period"):
+                                p = manifest["period"]
+                                slot.period_key = p if isinstance(p, str) else str(p)
+                    except Exception as e:
+                        yield f"⚠️ workspace 落盘失败: {e}\n"
+        elif raw_business_data and session.jurisdictions and not session.jurisdictions[0].workspace_path:
+            # 兼容: raw_business_data 有但无 case_id → 落盘到 default
             try:
-                ws_path, manifest = ensure_case(effective_case_id, raw_business_data)
-                session.workspace_path = ws_path
+                ws_path, manifest = ensure_case("default", raw_business_data)
+                session.jurisdictions[0].workspace_path = ws_path
                 yield f"📂 workspace 已就绪: {ws_path}\n"
-                # 从 manifest 提取 VRN / period(SDK / 业务工具仍要用)
-                if manifest.get("vrn") and not session.taxpayer_id:
-                    session.taxpayer_id = manifest["vrn"]
-                # period_key: 优先取 manifest 的 period_key 字段(从 case_summary.json 来),
-                # 否则取 period 字段(可能是 string 或 dict)
-                if not session.period_key:
-                    if manifest.get("period_key"):
-                        session.period_key = manifest["period_key"]
-                    elif manifest.get("period"):
-                        p = manifest["period"]
-                        session.period_key = p if isinstance(p, str) else str(p)
-            except Exception as e:
-                # 落盘失败不阻塞 chat,降级到不附 workspace 路径
-                yield f"⚠️ workspace 落盘失败: {e}\n"
-        elif raw_business_data:
-            # raw_business_data 有但 workspace 已存在 → 更新 session 字段
+                if manifest.get("vrn") and not session.jurisdictions[0].taxpayer_id:
+                    session.jurisdictions[0].taxpayer_id = manifest["vrn"]
+            except Exception:
+                pass
             session.raw_business_data = raw_business_data  # 保留字段(向后兼容)
 
-        # 构建增强消息:不再灌数据摘要,只附 workspace reminder
+        # ── 构建增强消息 ──
         enriched_message = user_message
-        if session.workspace_path:
-            enriched_message += _build_workspace_reminder(session.workspace_path)
-        elif session.line_items and "数据" not in user_message and "data" not in user_message.lower():
+        enriched_message += _build_multi_workspace_reminder(session.jurisdictions)
+        if (not any(s.workspace_path for s in session.jurisdictions)
+                and session.line_items
+                and "数据" not in user_message and "data" not in user_message.lower()):
             enriched_message += f"\n\n[系统: 用户已上传 {len(session.line_items)} 条 line items]"
 
-        # 选择模式：
-        #   - SDK 装了 + api_key → SDK 真模式
-        #   - SDK 没装 + api_key + BASE_URL → httpx 直连 (MiniMax 等代理服务)
-        #   - 都没 → mock 降级
+        # ── 选择模式 ──
         if SDK_AVAILABLE and self.api_key:
             async for chunk in self._sdk_chat(session, enriched_message):
                 yield chunk
         elif self.api_key and os.environ.get("ANTHROPIC_BASE_URL"):
             # SDK 缺失但有 key + 自定义 endpoint — 直接 httpx 调
-            jurisdiction = session.jurisdiction or "uk"
-            tax_type = session.tax_type or "vat"
+            slots_as_tuples = [
+                (s.jurisdiction, s.tax_type, s.workspace_path)
+                for s in session.jurisdictions
+            ] or [("uk", "vat", "")]
             try:
-                system_prompt = get_system_prompt(jurisdiction, tax_type)
+                system_prompt = get_multi_jurisdiction_prompt(slots_as_tuples)
             except Exception:
                 system_prompt = "You are T.A.X.I., a helpful tax filing assistant."
-            # httpx 模式没有 Read 工具,但仍告知 workspace 存在(避免索要 VRN)
-            if session.workspace_path:
+            # httpx 模式没有 Read 工具,但仍告知 workspace 存在
+            if any(s.workspace_path for s in session.jurisdictions):
                 system_prompt += (
                     "\n\n[Workspace] Case data has been loaded from disk. "
                     "VRN and period are already available — do NOT ask the user for them. "
@@ -298,6 +421,11 @@ class TaxAgentEngine:
         return {
             "session_id": session.session_id,
             "status": session.status,
+            "jurisdictions": [
+                {"cc": s.jurisdiction, "tt": s.tax_type, "workspace": s.workspace_path}
+                for s in session.jurisdictions
+            ],
+            # 向后兼容
             "jurisdiction": session.jurisdiction,
             "tax_type": session.tax_type,
             "taxpayer_id": session.taxpayer_id,
@@ -308,34 +436,31 @@ class TaxAgentEngine:
         }
 
     async def reset_session(self, session_id: str) -> None:
-        """重置会话状态并清理所有 SDK clients"""
+        """重置会话状态并清理 SDK client"""
         session = self.sessions.get(session_id)
-        if session:
-            for client in session._clients.values():
-                try:
-                    await client.disconnect()
-                except Exception:
-                    pass
-            session._clients.clear()
+        if session and session._client:
+            try:
+                await session._client.disconnect()
+            except Exception:
+                pass
         if session_id in self.sessions:
             del self.sessions[session_id]
 
     async def set_jurisdiction(self, session_id: str, jurisdiction: str, tax_type: str = "vat") -> None:
-        """切换会话的管辖地和税种（会触发 client 重建）"""
+        """切换会话的管辖地和税种(会触发 client 重建)。
+
+        保留向后兼容:调用方仍可通过此方法切 jurisdiction。
+        实际上 jurisdictions 变化会在下次 _sdk_chat 时自动重建 client。
+        """
         session = self.sessions.get(session_id)
         if not session:
             return
-        if session.jurisdiction != jurisdiction or session.tax_type != tax_type:
-            # 断开旧 jurisdiction 的 client
-            old_key = f"{session.jurisdiction}:{session.tax_type}"
-            old_client = session._clients.pop(old_key, None)
-            if old_client:
-                try:
-                    await old_client.disconnect()
-                except Exception:
-                    pass
-            session.jurisdiction = jurisdiction
-            session.tax_type = tax_type
+        if not session.jurisdictions:
+            session.jurisdictions.append(JurisdictionSlot(jurisdiction=jurisdiction, tax_type=tax_type))
+        else:
+            if session.jurisdictions[0].jurisdiction != jurisdiction or session.jurisdictions[0].tax_type != tax_type:
+                session.jurisdictions[0].jurisdiction = jurisdiction
+                session.jurisdictions[0].tax_type = tax_type
 
     # ── SDK Real Mode ──
 
@@ -344,56 +469,56 @@ class TaxAgentEngine:
         session: AgentSession,
         user_message: str,
     ) -> AsyncIterator[str]:
-        """使用 ClaudeSDKClient 进行真实对话。
-        若 SDK 不可用或初始化失败，自动回退到 httpx 直连 MiniMax /v1/messages。
-        """
-        # 确定管辖地（默认 uk）
-        jurisdiction = session.jurisdiction or "uk"
-        tax_type = session.tax_type or "vat"
-        client_key = f"{jurisdiction}:{tax_type}"
+        """使用 ClaudeSDKClient 进行真实对话(多管辖地统一挂载)。
 
-        # 获取或创建对应管辖地的 SDK client
-        client = session._clients.get(client_key)
-        if client is None:
-            system_prompt = get_system_prompt(jurisdiction, tax_type)
-            # 追加 workspace 目录布局说明(per-jurisdiction 通用,不注入具体 case_id)
-            system_prompt += (
-                "\n\n[Workspace]\n"
-                "Case data is on disk at ~/.taxi/workspace/<case_id>/. "
-                "Files: manifest.json (company name, VRN, period), sales.json, purchases.json, "
-                "nine_box.json, warnings.json, source_meta.json, and source_docs/*.json. "
-                "**CRITICAL: When a workspace path is provided in the user message, you MUST read "
-                "manifest.json FIRST before responding.** It contains VRN, company name, and period — "
-                "never ask the user for this information. After reading manifest, use the Read tool "
-                "to load any other files you need (sales.json, purchases.json, etc.). "
-                "Do NOT ask the user to resend data. The workspace path remains valid for the entire session."
-            )
-            allowlist = get_allowlist_for(jurisdiction, tax_type)
+        一个 client 挂载所有活跃 jurisdiction 的 MCP server + 全局 KB。
+        LLM 通过 mcp__tax_agent_{cc}_{tt}__ namespace 自路由。
+        jurisdictions 变化时重建 client。
+        """
+        # 确定活跃 jurisdictions（空则默认 uk:vat）
+        slots = session.jurisdictions or [JurisdictionSlot(jurisdiction="uk", tax_type="vat")]
+        jhash = "|".join(f"{s.jurisdiction}:{s.tax_type}" for s in slots)
+
+        # 仅当 jurisdictions 变化或 client 不存在时重建
+        if session._client is None or session._mounted_jurisdictions_hash != jhash:
+            if session._client:
+                try:
+                    await session._client.disconnect()
+                except Exception:
+                    pass
+
+            # 组合多国 prompt + workspace 说明
+            slots_as_tuples = [
+                (s.jurisdiction, s.tax_type, s.workspace_path) for s in slots
+            ]
+            system_prompt = get_multi_jurisdiction_prompt(slots_as_tuples)
+            system_prompt += _WORKSPACE_INSTRUCTION
+
+            # 多国 allowlist(通配符)
+            allowlist = get_multi_jurisdiction_allowlist(slots_as_tuples)
+
+            # 挂载所有 jurisdiction 的 MCP server + 全局 KB
+            mcp_servers = {}
+            for slot in slots:
+                key = (slot.jurisdiction, slot.tax_type)
+                mcp_info = self._mcp_servers.get(key)
+                if mcp_info:
+                    mcp_servers[mcp_info["name"]] = mcp_info["instance"]
+            kb_info = self._mcp_servers.get(("global", "tax_kb"))
+            if kb_info:
+                mcp_servers[kb_info["name"]] = kb_info["instance"]
 
             options_kwargs = {
                 "system_prompt": system_prompt,
                 "allowed_tools": allowlist,
+                "mcp_servers": mcp_servers,
                 "permission_mode": self.permission_mode,
                 "cwd": self.cwd,
-                # 把 ~/.taxi/workspace 暴露给 SDK 内置 Read 工具,
-                # 让 LLM 能直接 Read case 数据文件(不灌 prompt)
                 "add_dirs": [str(WORKSPACE_ROOT)],
-                # 不加载 user/project settings，避免首次运行 onboarding/trust 阻塞
                 "setting_sources": [],
-                # 同时忽略 .mcp.json 和 plugin MCP servers
                 "strict_mcp_config": True,
-                # AG-UI 协议需要 token-level streaming：开启后 CLI 在
-                # 每个 content_block_delta 上 emit StreamEvent 帧，
-                # 我们在 receive_response() 里识别它们并 yield 纯文本。
-                # 注意：启用后 SDK 仍会再 emit 一次完整的 AssistantMessage，
-                # 下面的循环用 `stream_active` 标志跳过那段以避免重复。
                 "include_partial_messages": True,
-                # 启用 extended thinking：display="summarized" 让 CLI 子进程
-                # 流式输出 thinking 文本（而非仅 emit 签名），前端可在折叠面板
-                # 中展示模型的推理过程。"adaptive" 允许模型自行决定深度；
-                # 不思考的模型把它当 no-op，所以无条件启用。
                 "thinking": {"type": "adaptive", "display": "summarized"},
-                # 显式转发路由 + 沙箱标志给 CLI 子进程
                 "env": {
                     k: v
                     for k, v in {
@@ -403,7 +528,6 @@ class TaxAgentEngine:
                         "ANTHROPIC_DEFAULT_SONNET_MODEL": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL"),
                         "ANTHROPIC_DEFAULT_HAIKU_MODEL": os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
                         "ANTHROPIC_DEFAULT_OPUS_MODEL": os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL"),
-                        # H4: OpenTelemetry env 透传 (默认 off — 宿主没设就全丢)
                         "CLAUDE_CODE_ENABLE_TELEMETRY": os.environ.get("CLAUDE_CODE_ENABLE_TELEMETRY"),
                         "OTEL_TRACES_EXPORTER": os.environ.get("OTEL_TRACES_EXPORTER"),
                         "OTEL_METRICS_EXPORTER": os.environ.get("OTEL_METRICS_EXPORTER"),
@@ -415,23 +539,12 @@ class TaxAgentEngine:
                     if v
                 },
             }
-            # model 名称: 优先 ANTHROPIC_DEFAULT_SONNET_MODEL (代理服务的 model 名)
             model_name = (
                 os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
                 or os.environ.get("ANTHROPIC_MODEL")
             )
             if model_name:
                 options_kwargs["model"] = model_name
-
-            # 附加对应管辖地的 MCP Server
-            mcp_info = self._mcp_servers.get((jurisdiction, tax_type))
-            if mcp_info:
-                options_kwargs["mcp_servers"] = {mcp_info["name"]: mcp_info["instance"]}
-
-            # 附加全局税法知识 MCP Server（对所有管辖地都可用）
-            kb_info = self._mcp_servers.get(("global", "tax_kb"))
-            if kb_info:
-                options_kwargs.setdefault("mcp_servers", {})[kb_info["name"]] = kb_info["instance"]
 
             # 注册税法调研 sub-agent
             from backend.agent.tax_knowledge_prompts import TAX_KB_SUBAGENT_PROMPT
@@ -445,18 +558,19 @@ class TaxAgentEngine:
                 )
             }
 
-            # 把 CLI 子进程的 stderr 透到后端日志，便于诊断挂起/认证问题
+            # CLI 子进程 stderr 透传
             import sys as _sys
             options_kwargs["stderr"] = lambda line: _sys.stderr.write(
                 "[claude-cli] " + str(line).rstrip() + "\n"
             )
 
             options = ClaudeAgentOptions(**options_kwargs)
-            client = ClaudeSDKClient(options=options)
-            await client.__aenter__()
-            session._clients[client_key] = client
+            session._client = ClaudeSDKClient(options=options)
+            await session._client.__aenter__()
+            session._mounted_jurisdictions_hash = jhash
 
         session.status = "chatting"
+        client = session._client
 
         try:
             await client.query(user_message, session_id=session.session_id)
@@ -584,24 +698,23 @@ class TaxAgentEngine:
 
         except Exception as e:
             yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax (无 MCP 工具)...\n"
-            # 显式告诉前端 / LLM 工具不可用 — 防止 LLM 在没有工具的情况下编数字
             yield {"__agui__": "tool_unavailable", "reason": f"sdk_fallback: {type(e).__name__}: {str(e)[:120]}"}
             try:
                 await client.disconnect()
             except Exception:
                 pass
-            session._clients.pop(client_key, None)
-            # 回退: 用 httpx 直接调 MiniMax /v1/messages
-            jurisdiction = session.jurisdiction or "uk"
-            tax_type = session.tax_type or "vat"
+            session._client = None
+            # 回退: 用 httpx 直接调
+            slots_as_tuples = [
+                (s.jurisdiction, s.tax_type, s.workspace_path)
+                for s in (session.jurisdictions or [JurisdictionSlot(jurisdiction="uk")])
+            ]
             try:
-                system_prompt = get_system_prompt(jurisdiction, tax_type)
+                system_prompt = get_multi_jurisdiction_prompt(slots_as_tuples)
             except Exception:
                 system_prompt = "You are T.A.X.I., a helpful tax filing assistant."
-            # 在 fallback prompt 末尾追加: 工具不可用, 禁止编数字
-            system_prompt = (
-                system_prompt
-                + "\n\n[Tool-Failure Notice] MCP tools are currently unavailable. "
+            system_prompt += (
+                "\n\n[Tool-Failure Notice] MCP tools are currently unavailable. "
                 "Do NOT fabricate any numeric tax values. If the user asks for "
                 "calculations, tell them the toolchain is offline and stop."
             )
@@ -719,31 +832,36 @@ class TaxAgentEngine:
         import asyncio
 
         msg_lower = user_message.lower()
-        jurisdiction = session.jurisdiction or "uk"
+        jurisdictions_desc = ", ".join(
+            f"{s.jurisdiction.upper()}/{s.tax_type}" for s in session.jurisdictions
+        ) or "UK/VAT"
 
-        # 构造 workspace 前缀(一次,复用)
+        # 构造 workspace 前缀(多管辖地)
         ws_prefix = ""
-        if session.workspace_path:
-            ws_prefix = f"📂 workspace: {session.workspace_path}\n"
-            if session.taxpayer_id:
-                ws_prefix += f"📋 VRN: {session.taxpayer_id}\n"
+        if any(s.workspace_path for s in session.jurisdictions):
+            ws_prefix = "📂 Workspaces:\n"
+            for s in session.jurisdictions:
+                if s.workspace_path:
+                    cc = s.jurisdiction.upper()
+                    ws_prefix += f"  - {cc}: {s.workspace_path}\n"
 
-        # 演示用的推理片段：让前端折叠面板在没有 API key 时也能展示
-        # 完整生命周期（auto-open → collapse）。生产环境不会跑这条路径。
+        # 演示用的推理片段
         yield {"__agui__": "reasoning_start"}
         for piece in (
             "用户提问: " + user_message[:40] + "\n",
-            "判断 jurisdiction: " + jurisdiction + "\n",
+            "活跃管辖地: " + jurisdictions_desc + "\n",
             "按意图路由到对应 handler\n",
         ):
             yield {"__agui__": "reasoning_content", "delta": piece}
         yield {"__agui__": "reasoning_end"}
         await asyncio.sleep(0.2)
 
-        if jurisdiction != "uk":
+        # Mock 模式: 仅 UK VAT 有详细演示,其他管辖地给出提示
+        has_non_uk = any(s.jurisdiction != "uk" for s in session.jurisdictions)
+        if has_non_uk and not any(s.jurisdiction == "uk" for s in session.jurisdictions):
             yield f"我是 TaxAgent 智能报税助手。\n\n"
-            yield f"当前管辖地: {jurisdiction.upper()}\n"
-            yield f"注意: Mock 模式仅支持 UK 演示。要体验 {jurisdiction.upper()} 的报税功能，\n"
+            yield f"活跃管辖地: {jurisdictions_desc}\n"
+            yield f"注意: Mock 模式仅支持 UK VAT 演示。要体验其他管辖地的报税功能，\n"
             yield f"请安装 claude-agent-sdk 并配置对应国家的 API 凭证。\n\n"
             yield f"我可以帮您:\n"
             yield f"1. 查询待申报义务\n"

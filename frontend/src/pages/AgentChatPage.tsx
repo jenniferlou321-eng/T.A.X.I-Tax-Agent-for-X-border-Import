@@ -604,10 +604,10 @@ export default function AgentChatPage() {
     }
   }
 
-  // ── 发送带 workspace 上下文的消息（case_id 优先;rawData 兼容老客户端） ──
+  // ── 发送带 workspace 上下文的消息（case_ids 多管辖地优先;caseId/rawData 兼容） ──
   const sendWithRawData = useCallback(async (
     message: string,
-    opts?: { caseId?: string; rawData?: Record<string, unknown> }
+    opts?: { caseId?: string; caseIds?: string[]; rawData?: Record<string, unknown> }
   ) => {
     const text = message.trim()
     if (!text || isLoading) return
@@ -622,9 +622,13 @@ export default function AgentChatPage() {
     const sid = sessionId || generateId()
     if (!sessionId) setSessionId(sid)
 
-    // 构造 query string:case_id 优先,rawData 兼容
+    // 构造 query string:case_ids 优先(多管辖地),caseId 兼容(单国)
     const params = new URLSearchParams({ session_id: sid, message: text })
-    if (opts?.caseId) params.set('case_id', opts.caseId)
+    if (opts?.caseIds && opts.caseIds.length > 0) {
+      params.set('case_ids', opts.caseIds.join(','))
+    } else if (opts?.caseId) {
+      params.set('case_id', opts.caseId)
+    }
     if (opts?.rawData) params.set('raw_data', JSON.stringify(opts.rawData))
 
     setMessages((prev) => [
@@ -632,7 +636,7 @@ export default function AgentChatPage() {
       {
         id: generateId(),
         role: 'user',
-        content: opts?.caseId
+        content: (opts?.caseIds || opts?.caseId)
           ? text + '\n[Case 已加载 — VRN/期间/发票数据在 workspace 中,agent 将自动读取]'
           : text + '\n[已附加 TechFlow Distribution Ltd Q1 原始业务数据]',
         timestamp: new Date(),
@@ -683,14 +687,15 @@ export default function AgentChatPage() {
   }
 
   // 强制要求已选 Case(无 case 时按钮 disabled 拦截,此处兜底 alert)
-  // 走 case_id 路径,后端落盘 workspace + LLM 用 Read 工具按需读取
+  // 走 case_ids 路径(多管辖地),后端落盘 workspace + LLM 用 Read 工具按需读取
   const handleAnalyzeCurrentCase = async () => {
     if (!currentCase) {
       alert('请先在 Dashboard 选择一个 Demo Case')
       return
     }
+    const ids = currentCase.erpCaseIds || [currentCase.erpCaseId]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    sendWithRawData('请分析这些数据并帮我报税', { caseId: currentCase.id })
+    sendWithRawData('请分析这些数据并帮我报税', { caseIds: ids })
   }
 
   // ── Load Sample Business Data ──

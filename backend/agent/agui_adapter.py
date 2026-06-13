@@ -71,6 +71,7 @@ async def stream_agui_events(
     raw_business_data: Optional[dict] = None,
     uploaded_data: Optional[list] = None,
     case_id: Optional[str] = None,
+    case_ids: Optional[list[str]] = None,
 ) -> AsyncIterator[str]:
     """运行 engine.chat 并把内部 yield 转成 SSE 字符串（AG-UI 格式）。"""
     enc = EventEncoder()
@@ -166,6 +167,7 @@ async def stream_agui_events(
             uploaded_data=uploaded_data,
             raw_business_data=raw_business_data,
             case_id=case_id,
+            case_ids=case_ids,
         ):
             # ── 文本片段 ──
             if isinstance(chunk, str):

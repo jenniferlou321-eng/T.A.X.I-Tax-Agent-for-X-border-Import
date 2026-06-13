@@ -20,6 +20,7 @@ from .hmrc_service import HMRCVATService
 from .calculator import calculate_uk_vat
 from .validator import validate_uk_vat
 from ..config import hmrc_config
+from .._hmrc_base import hmrc_mode, tool_error, tool_ok
 
 
 # ── Helper: Build HMRC service ──
@@ -42,17 +43,6 @@ def _build_hmrc_service(vrn: str) -> HMRCVATService:
     )
 
 
-def _tool_error(msg: str, detail: str = "") -> dict:
-    payload = {"success": False, "error": msg}
-    if detail:
-        payload["detail"] = detail
-    return {"content": [{"type": "text", "text": json.dumps(payload)}], "is_error": True}
-
-
-def _tool_ok(data: dict) -> dict:
-    return {"content": [{"type": "text", "text": json.dumps(data, indent=2)}]}
-
-
 # ── UK VAT Agent Tool Set ──
 
 class UKVATAgentToolSet(AgentToolSet):
@@ -71,9 +61,7 @@ class UKVATAgentToolSet(AgentToolSet):
 
         # 默认使用模拟模式（除非显式启用 HMRC_MODE=live）
         # 这样 Kimi/ANTHROPIC 凭证不会被误用为 HMRC 凭证
-        import os
-        hmrc_mode = os.environ.get("HMRC_MODE", "mock").lower()
-        if hmrc_mode != "live":
+        if hmrc_mode() != "live":
             return _tool_ok({
                 "success": True,
                 "mode": "mock",
@@ -317,9 +305,7 @@ class UKVATAgentToolSet(AgentToolSet):
 
         # 默认使用模拟模式 (与 get_obligations 对齐)。这样 Kimi/ANTHROPIC
         # 凭证不会被误用为 HMRC 凭证, 演示时也不需要真 OAuth token。
-        import os
-        hmrc_mode = os.environ.get("HMRC_MODE", "mock").lower()
-        if hmrc_mode != "live":
+        if hmrc_mode() != "live":
             # mock 模式: 不调真 HMRC, 返回一个伪 receipt
             return _tool_ok({
                 "success": True,
@@ -375,9 +361,7 @@ class UKVATAgentToolSet(AgentToolSet):
             return _tool_error("VRN and period_key are required")
 
         # mock 短路 (与 submit_return / get_obligations 对齐)
-        import os
-        hmrc_mode = os.environ.get("HMRC_MODE", "mock").lower()
-        if hmrc_mode != "live":
+        if hmrc_mode() != "live":
             return _tool_ok({
                 "success": True,
                 "mode": "mock",

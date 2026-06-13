@@ -20,6 +20,7 @@ import httpx
 
 from backend.channels.oauth import OAuth2Manager
 from backend.channels.fraud_headers import FraudPreventionHeaders
+from backend.jurisdictions.uk._hmrc_base import HMRCService
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +52,7 @@ class VATReturnView:
     received: Optional[str] = None
 
 
-@dataclass
-class HMRCError:
-    """HMRC API 错误"""
-    code: str
-    message: str
-    path: str = ""
-
-
-class HMRCVATService:
+class HMRCVATService(HMRCService):
     """HMRC Making Tax Digital for VAT API 客户端"""
 
     def __init__(
@@ -68,44 +61,12 @@ class HMRCVATService:
         oauth: OAuth2Manager,
         fraud_headers: FraudPreventionHeaders | None = None,
     ):
-        self.base_url = base_url.rstrip("/")
-        self.oauth = oauth
-        self._fraud = fraud_headers
-        self._client: Optional[httpx.AsyncClient] = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                timeout=30,
-            )
-        return self._client
-
-    def _build_headers(self, user_id: str = "") -> dict[str, str]:
-        """构建包含认证和欺诈预防头的请求头"""
-        headers = {
-            "Accept": "application/vnd.hmrc.1.0+json",
-            "Content-Type": "application/json",
-        }
-        if self._fraud:
-            headers.update(self._fraud.build_headers(user_id=user_id))
-        return headers
-
-    def _parse_hmrc_errors(self, data: dict) -> list[HMRCError]:
-        """解析 HMRC 标准错误响应"""
-        errors: list[HMRCError] = []
-        code = data.get("code", "UNKNOWN")
-        message = data.get("message", "Unknown HMRC error")
-        errors.append(HMRCError(code=code, message=message))
-
-        # 字段级错误
-        for err in data.get("errors", []):
-            errors.append(HMRCError(
-                code=err.get("code", ""),
-                message=err.get("message", ""),
-                path=err.get("path", ""),
-            ))
-        return errors
+        super().__init__(
+            base_url=base_url,
+            oauth=oauth,
+            fraud_headers=fraud_headers,
+            accept_header="application/vnd.hmrc.1.0+json",
+        )
 
     # ── Public API ──
 
@@ -124,9 +85,7 @@ class HMRCVATService:
             to_date: 查询结束日期（默认今天）
             status: "O" (Open) | "F" (Fulfilled) | None (all)
         """
-        auth = await self.oauth.authenticate_silent()
-        if not auth.success:
-            raise PermissionError(f"HMRC auth failed: {auth.error}")
+        token = await self._authenticate()
 
         if to_date is None:
             to_date = date.today()
@@ -143,15 +102,13 @@ class HMRCVATService:
         client = await self._get_client()
         url = f"/organisations/vat/{vrn}/obligations"
         headers = self._build_headers(user_id=vrn)
-        headers["Authorization"] = f"Bearer {auth.token}"
+        headers["Authorization"] = f"Bearer {token}"
 
         try:
             resp = await client.get(url, params=params, headers=headers)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            data = e.response.json() if e.response.content else {}
-            errors = self._parse_hmrc_errors(data)
-            raise ValueError(f"HMRC obligations error: {errors[0].code} — {errors[0].message}")
+        except httpx.HTTPStatusError:
+            self._raise_for_hmrc_error(resp, "obligations")
 
         data = resp.json()
         obligations = []
@@ -176,46 +133,35 @@ class HMRCVATService:
         Returns:
             HMRC 响应: {processingDate, paymentIndicator, formBundleNumber, chargeRefNumber}
         """
-        auth = await self.oauth.authenticate_silent()
-        if not auth.success:
-            raise PermissionError(f"HMRC auth failed: {auth.error}")
+        token = await self._authenticate()
 
         client = await self._get_client()
         url = f"/organisations/vat/{vrn}/returns"
         headers = self._build_headers(user_id=vrn)
-        headers["Authorization"] = f"Bearer {auth.token}"
+        headers["Authorization"] = f"Bearer {token}"
 
         try:
             resp = await client.post(url, json=body, headers=headers)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            data = e.response.json() if e.response.content else {}
-            errors = self._parse_hmrc_errors(data)
-            raise ValueError(
-                f"HMRC submit error [{e.response.status_code}]: "
-                f"{errors[0].code} — {errors[0].message}"
-            )
+        except httpx.HTTPStatusError:
+            self._raise_for_hmrc_error(resp, "submit")
 
         return resp.json()
 
     async def get_return(self, vrn: str, period_key: str) -> VATReturnView:
         """查看已提交的 VAT Return"""
-        auth = await self.oauth.authenticate_silent()
-        if not auth.success:
-            raise PermissionError(f"HMRC auth failed: {auth.error}")
+        token = await self._authenticate()
 
         client = await self._get_client()
         url = f"/organisations/vat/{vrn}/returns/{period_key}"
         headers = self._build_headers(user_id=vrn)
-        headers["Authorization"] = f"Bearer {auth.token}"
+        headers["Authorization"] = f"Bearer {token}"
 
         try:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            data = e.response.json() if e.response.content else {}
-            errors = self._parse_hmrc_errors(data)
-            raise ValueError(f"HMRC get return error: {errors[0].code} — {errors[0].message}")
+        except httpx.HTTPStatusError:
+            self._raise_for_hmrc_error(resp, "get return")
 
         data = resp.json()
         return VATReturnView(
@@ -234,46 +180,38 @@ class HMRCVATService:
 
     async def get_liabilities(self, vrn: str, from_date: date, to_date: date) -> list[dict]:
         """获取 VAT 负债信息"""
-        auth = await self.oauth.authenticate_silent()
-        if not auth.success:
-            raise PermissionError(f"HMRC auth failed: {auth.error}")
+        token = await self._authenticate()
 
         client = await self._get_client()
         url = f"/organisations/vat/{vrn}/liabilities"
         params = {"from": from_date.isoformat(), "to": to_date.isoformat()}
         headers = self._build_headers(user_id=vrn)
-        headers["Authorization"] = f"Bearer {auth.token}"
+        headers["Authorization"] = f"Bearer {token}"
 
         try:
             resp = await client.get(url, params=params, headers=headers)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            data = e.response.json() if e.response.content else {}
-            errors = self._parse_hmrc_errors(data)
-            raise ValueError(f"HMRC liabilities error: {errors[0].code} — {errors[0].message}")
+        except httpx.HTTPStatusError:
+            self._raise_for_hmrc_error(resp, "liabilities")
 
         data = resp.json()
         return data.get("liabilities", [])
 
     async def get_payments(self, vrn: str, from_date: date, to_date: date) -> list[dict]:
         """获取 VAT 付款信息"""
-        auth = await self.oauth.authenticate_silent()
-        if not auth.success:
-            raise PermissionError(f"HMRC auth failed: {auth.error}")
+        token = await self._authenticate()
 
         client = await self._get_client()
         url = f"/organisations/vat/{vrn}/payments"
         params = {"from": from_date.isoformat(), "to": to_date.isoformat()}
         headers = self._build_headers(user_id=vrn)
-        headers["Authorization"] = f"Bearer {auth.token}"
+        headers["Authorization"] = f"Bearer {token}"
 
         try:
             resp = await client.get(url, params=params, headers=headers)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            data = e.response.json() if e.response.content else {}
-            errors = self._parse_hmrc_errors(data)
-            raise ValueError(f"HMRC payments error: {errors[0].code} — {errors[0].message}")
+        except httpx.HTTPStatusError:
+            self._raise_for_hmrc_error(resp, "payments")
 
         data = resp.json()
         return data.get("payments", [])
