@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 import httpx  # 用于 SDK 不可用时直连 MiniMax /v1/messages
@@ -19,12 +21,32 @@ from .prompts import get_system_prompt, get_multi_jurisdiction_prompt
 from .tools import (
     create_mcp_servers,
     get_allowlist_for,
-    get_multi_jurisdiction_allowlist,
     SDK_AVAILABLE,
     set_registry,
 )
-from .workspace_store import ensure_case, WORKSPACE_ROOT
+from .workspace_store import ensure_case, mount_cases, AGENT_WORKSPACE_ROOT
+from .session_store import cleanup_old_sessions
+from .provider_config import get_agent_provider_config
 from backend.services.audit_log import AuditLog
+from backend.agent.tax_knowledge_store import TaxKnowledgeStore
+
+# SDK 会话自动清理阈值 — 保留最近 N 个会话的 JSONL,避免磁盘无限累积。
+# ~/.claude/projects/ 单项目可达数百 MB;每轮 chat 完成后异步清理。
+_SESSION_KEEP_LIMIT = 10
+
+
+def _cleanup_sessions_async() -> int:
+    """在后台线程中清理旧 SDK 会话,删除多余的 JSONL 文件。
+
+    在 chat() 末尾通过 loop.create_task(asyncio.to_thread(...)) 调度,
+    不会阻塞流式响应。
+    """
+    try:
+        return cleanup_old_sessions(keep=_SESSION_KEEP_LIMIT)
+    except Exception as e:  # 静默失败 — 清理失败不影响 chat 主体
+        import logging
+        logging.getLogger(__name__).debug("session cleanup failed: %s", e)
+        return 0
 
 # ── SDK 导入（带优雅降级） ──
 if SDK_AVAILABLE:
@@ -76,31 +98,39 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════
-# Workspace Reminder (SDK 模式 + mock 模式共用)
+# Workspace 注入: 单一事实源 (M2/M3)
+# 事实要点在 _WORKSPACE_FACTS 一处定义,三条 system_prompt 出口
+# (SDK / httpx / httpx-fallback) + 用户消息尾的即时提醒都从它派生,
+# 杜绝"多处手写 → 改一处漏一处"的措辞漂移。
 # ═══════════════════════════════════════════════════════════
 
+_WORKSPACE_FACTS = (
+    "manifest.json holds the company name, VRN, and period; other files: "
+    "sales.json, purchases.json, nine_box.json, warnings.json, source_meta.json, "
+    "and source_docs/*.json. "
+    "Never ask the user for VRN / company name / period — they are in the workspace. "
+    "Do NOT enumerate or describe ~/.taxi/workspace/<case_id>/ legacy directories "
+    "or any unselected case data. "
+    "If related_cases/ exists, read it only for the currently selected cross-border case."
+)
+
+
 def _build_multi_workspace_reminder(slots: list[JurisdictionSlot]) -> str:
-    """构造多管辖地 workspace reminder — 列出所有 workspace 路径。"""
+    """即时提醒(进用户消息尾): 抗注意力衰减的第二次 workspace 提示。
+
+    事实要点统一取自 _WORKSPACE_FACTS(单一事实源),这里只加"本轮 active
+    workspace 已就绪"的即时语气外壳。
+    """
     active = [s for s in slots if s.workspace_path]
     if not active:
         return ""
-    if len(active) == 1:
-        s = active[0]
-        return (
-            f"\n\n[Workspace: {s.workspace_path}]\n"
-            f"**先读 manifest.json 获取公司名/VRN/期间,再按需读 sales.json / purchases.json 等。**"
-            f"**该路径在整轮会话持续有效,不要让用户重发数据,不要向用户索要 VRN/期间等已存在于 manifest 的信息。**"
-        )
-    lines = ["\n\n[Workspaces]"]
-    for s in active:
-        cc_label = s.jurisdiction.upper()
-        tt_label = s.tax_type.replace("_", " ").title()
-        lines.append(f"- {cc_label} {tt_label}: {s.workspace_path}")
-    lines.append(
-        "**先读各目录下的 manifest.json 获取公司名/纳税人ID/期间,再按需读其他文件。**"
-        "**这些路径在整轮会话持续有效,不要让用户重发数据。**"
+    root = str(AGENT_WORKSPACE_ROOT)
+    return (
+        f"\n\n[Active Workspace: {root}]\n"
+        "The case you selected has been copied into this active workspace. "
+        "Read manifest.json FIRST, then the other files as needed. "
+        + _WORKSPACE_FACTS
     )
-    return "\n".join(lines)
 
 
 def _infer_jurisdiction_from_case_id(case_id: str) -> tuple[str, str]:
@@ -123,23 +153,85 @@ def _infer_jurisdiction_from_case_id(case_id: str) -> tuple[str, str]:
     return cc, tt
 
 
-# 通用 workspace 目录布局说明(追加到 system_prompt 末尾)
+# 追加到 system_prompt 末尾的 workspace 说明,两个语气变体(都派生自 _WORKSPACE_FACTS):
+#   _WORKSPACE_INSTRUCTION          — 有 Read 工具(SDK 路径): 指示先读 manifest.json
+#   _WORKSPACE_INSTRUCTION_NO_READ  — 无 Read 工具(httpx 路径): 数据已由后端加载,别反问
 _WORKSPACE_INSTRUCTION = (
     "\n\n[Workspace]\n"
-    "Case data is on disk at ~/.taxi/workspace/<case_id>/. "
-    "Files: manifest.json (company name, VRN, period), sales.json, purchases.json, "
-    "nine_box.json, warnings.json, source_meta.json, and source_docs/*.json. "
-    "**CRITICAL: When a workspace path is provided in the user message, you MUST read "
-    "manifest.json FIRST before responding.** It contains VRN, company name, and period — "
-    "never ask the user for this information. After reading manifest, use the Read tool "
-    "to load any other files you need (sales.json, purchases.json, etc.). "
-    "Do NOT ask the user to resend data. The workspace path remains valid for the entire session."
+    f"Case data, when selected, is copied into a single active directory: "
+    f"{AGENT_WORKSPACE_ROOT}/ (empty by default). "
+    "**CRITICAL: when the active workspace is available, you MUST read "
+    "manifest.json FIRST before responding.** "
+    + _WORKSPACE_FACTS
+)
+
+_WORKSPACE_INSTRUCTION_NO_READ = (
+    "\n\n[Workspace]\n"
+    "Case data, when selected, has already been loaded from disk by the backend "
+    "and included in the message — you do not have a file-reading tool here. "
+    + _WORKSPACE_FACTS
 )
 
 
 # ═══════════════════════════════════════════════════════════
 # Session State
 # ═══════════════════════════════════════════════════════════
+
+# Skill 插件根:一个国家一个 local plugin(backend/agent/skill_plugins/<cc>/)。
+_SKILL_PLUGIN_ROOT = Path(__file__).resolve().parent / "skill_plugins"
+
+
+def _derive_skill_plugins(mcp_server_keys) -> list[dict]:
+    """从已挂载 MCP server 的 (cc, tt) keys 推出 local plugin 列表。
+
+    一个国家一个插件;仅当 skill_plugins/<cc>/skills/ 实际存在时纳入
+    (de/cn/fr 无 agent tools → 无 server key → 自动跳过)。
+    """
+    ccs = {cc for (cc, tt) in mcp_server_keys if cc != "global"}
+    plugins: list[dict] = []
+    for cc in sorted(ccs):
+        if (_SKILL_PLUGIN_ROOT / cc / "skills").is_dir():
+            plugins.append({"type": "local", "path": str(_SKILL_PLUGIN_ROOT / cc)})
+    return plugins
+
+
+def _expected_skill_names(mcp_server_keys) -> set[str]:
+    """本进程应当加载的 skill 命名空间集(用于 init 自检)。
+
+    仅计入磁盘上确实 ship 了 SKILL.md 的 (cc, tt);tax_type 下划线→连字符。
+    """
+    names: set[str] = set()
+    for (cc, tt) in mcp_server_keys:
+        if cc == "global":
+            continue
+        tt_hyphen = tt.replace("_", "-")
+        if (_SKILL_PLUGIN_ROOT / cc / "skills" / tt_hyphen).is_dir():
+            names.add(f"{cc}:{tt_hyphen}")
+    return names
+
+
+def _all_mounted_slots(
+    active_slots, mcp_server_keys
+) -> list[tuple[str, str, str]]:
+    """mount-all:返回全部已挂载 (cc, tt) 段(给 system prompt 用)。
+
+    active_slots 在前并保留其 workspace_path;其余已挂载税种补空 workspace。
+    """
+    out: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for s in active_slots:
+        key = (s.jurisdiction, s.tax_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((s.jurisdiction, s.tax_type, s.workspace_path))
+    for (cc, tt) in sorted(k for k in mcp_server_keys if k[0] != "global"):
+        if (cc, tt) in seen:
+            continue
+        seen.add((cc, tt))
+        out.append((cc, tt, ""))
+    return out
+
 
 @dataclass
 class JurisdictionSlot:
@@ -169,6 +261,7 @@ class AgentSession:
     # 单一 SDK client(挂载所有 MCP server),jurisdictions 变化时重建
     _client: Optional[ClaudeSDKClient] = None
     _mounted_jurisdictions_hash: str = ""  # 追踪当前 client 挂载了哪些 jurisdiction
+    _init_skills_checked: bool = False  # init 自检只跑一次(init 每会话只发一次)
 
     # ── 向后兼容 property ──
 
@@ -251,14 +344,12 @@ class TaxAgentEngine:
         api_key: Optional[str] = None,
         cwd: Optional[str] = None,
         permission_mode: str = "bypassPermissions",
+        kb_store: Optional['TaxKnowledgeStore'] = None,
     ):
-        # 支持两种 token env var 命名: ANTHROPIC_API_KEY (官方) / ANTHROPIC_AUTH_TOKEN (代理服务常用)
-        self.api_key = (
-            api_key
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-            or ""
-        )
+        # SDK provider 配置固定来自 agent_provider.local.json,不读父 shell 环境。
+        # 这样 Claude Code `/model` 或 shell export 的 ANTHROPIC_MODEL 不会污染后端。
+        self._provider = get_agent_provider_config()
+        self.api_key = api_key or self._provider.api_key
         self.cwd = cwd or os.getcwd()
         self.permission_mode = permission_mode
         self.sessions: dict[str, AgentSession] = {}
@@ -271,13 +362,16 @@ class TaxAgentEngine:
         self._registry = registry
         self._mcp_servers: dict[tuple[str, str], dict] = {}
 
+        # 缓存外部注入的 KB store,以便 corpus sync router 复用同一实例。
+        self._kb_store = kb_store
+
         # H3: AuditLog 实例,供 _sdk_chat 记录 tool_invoked / tool_completed / agent_completed 事件
         self._audit: AuditLog = AuditLog()
 
         if registry:
             set_registry(registry)
             if SDK_AVAILABLE:
-                self._mcp_servers = create_mcp_servers(registry)
+                self._mcp_servers = create_mcp_servers(registry, kb_store=kb_store)
 
         # SDK 不可用时给出清晰提示
         if not SDK_AVAILABLE:
@@ -341,32 +435,36 @@ class TaxAgentEngine:
 
         # ── Workspace 落盘 ──
         if effective_case_ids:
-            for i, cid in enumerate(effective_case_ids):
-                slot = session.jurisdictions[i] if i < len(session.jurisdictions) else None
-                if slot and not slot.workspace_path:
-                    try:
-                        # 首个 case_id 带 raw_business_data(如有),其余从 fixture 加载
-                        ws_raw = raw_business_data if (i == 0 and raw_business_data) else None
-                        ws_path, manifest = ensure_case(cid, ws_raw)
-                        slot.workspace_path = ws_path
-                        yield f"📂 workspace 已就绪: {ws_path}\n"
-                        # 从 manifest 提取 VRN / period
-                        if manifest.get("vrn") and not slot.taxpayer_id:
-                            slot.taxpayer_id = manifest["vrn"]
-                        if not slot.period_key:
-                            if manifest.get("period_key"):
-                                slot.period_key = manifest["period_key"]
-                            elif manifest.get("period"):
-                                p = manifest["period"]
-                                slot.period_key = p if isinstance(p, str) else str(p)
-                    except Exception as e:
-                        yield f"⚠️ workspace 落盘失败: {e}\n"
+            try:
+                # 每次选择/分析 case 都先清空固定 active workspace,再把当前 case 投影进去。
+                # 第一个 case 写根目录;其余相关实体写 related_cases/<case_id>/。
+                mounted = mount_cases(
+                    effective_case_ids,
+                    raw_business_data if raw_business_data else None,
+                )
+                for i, (ws_path, manifest) in enumerate(mounted):
+                    slot = session.jurisdictions[i] if i < len(session.jurisdictions) else None
+                    if not slot:
+                        continue
+                    slot.workspace_path = ws_path
+                    # 从 manifest 提取 VRN / period
+                    if manifest.get("vrn") and not slot.taxpayer_id:
+                        slot.taxpayer_id = manifest["vrn"]
+                    if not slot.period_key:
+                        if manifest.get("period_key"):
+                            slot.period_key = manifest["period_key"]
+                        elif manifest.get("period"):
+                            p = manifest["period"]
+                            slot.period_key = p if isinstance(p, str) else str(p)
+                yield f"📂 active workspace 已就绪: {AGENT_WORKSPACE_ROOT}\n"
+            except Exception as e:
+                yield f"⚠️ workspace 落盘失败: {e}\n"
         elif raw_business_data and session.jurisdictions and not session.jurisdictions[0].workspace_path:
-            # 兼容: raw_business_data 有但无 case_id → 落盘到 default
+            # 兼容: raw_business_data 有但无 case_id → 落盘到固定 active workspace
             try:
                 ws_path, manifest = ensure_case("default", raw_business_data)
                 session.jurisdictions[0].workspace_path = ws_path
-                yield f"📂 workspace 已就绪: {ws_path}\n"
+                yield f"📂 active workspace 已就绪: {AGENT_WORKSPACE_ROOT}\n"
                 if manifest.get("vrn") and not session.jurisdictions[0].taxpayer_id:
                     session.jurisdictions[0].taxpayer_id = manifest["vrn"]
             except Exception:
@@ -382,11 +480,27 @@ class TaxAgentEngine:
             enriched_message += f"\n\n[系统: 用户已上传 {len(session.line_items)} 条 line items]"
 
         # ── 选择模式 ──
+        # SDK 模式有 3 分钟硬超时 — 超时后降级到 mock,避免长挂 SSE 流。
+        # (历史上 Minimax 代理曾卡住几分钟,导致前端 SSE 流死锁,SimpleHTTP
+        # server 线程耗尽,新资源请求 502。复杂多工具调用场景需要 2-3 分钟。)
         if SDK_AVAILABLE and self.api_key:
-            async for chunk in self._sdk_chat(session, enriched_message):
-                yield chunk
-        elif self.api_key and os.environ.get("ANTHROPIC_BASE_URL"):
-            # SDK 缺失但有 key + 自定义 endpoint — 直接 httpx 调
+            import asyncio
+            yielded_anything = False
+            try:
+                async with asyncio.timeout(180):
+                    async for chunk in self._sdk_chat(session, enriched_message):
+                        yielded_anything = True
+                        yield chunk
+            except (asyncio.TimeoutError, TimeoutError):
+                if not yielded_anything:
+                    yield {"__agui__": "step_end", "step_name": ""}
+                    yield ("\n⚠️ SDK 3 分钟未响应(可能是 Minimax 代理无响应),"
+                           "已自动降级到 mock 模式...\n")
+                    async for chunk in self._mock_chat(session, enriched_message):
+                        yield chunk
+                    return
+        elif self.api_key:
+            # SDK 缺失但 provider config 可用 — 直接 httpx 调
             slots_as_tuples = [
                 (s.jurisdiction, s.tax_type, s.workspace_path)
                 for s in session.jurisdictions
@@ -395,13 +509,9 @@ class TaxAgentEngine:
                 system_prompt = get_multi_jurisdiction_prompt(slots_as_tuples)
             except Exception:
                 system_prompt = "You are T.A.X.I., a helpful tax filing assistant."
-            # httpx 模式没有 Read 工具,但仍告知 workspace 存在
+            # httpx 模式没有 Read 工具,但仍告知 workspace 存在(无 Read 变体)
             if any(s.workspace_path for s in session.jurisdictions):
-                system_prompt += (
-                    "\n\n[Workspace] Case data has been loaded from disk. "
-                    "VRN and period are already available — do NOT ask the user for them. "
-                    "Respond based on the workspace information provided in the message."
-                )
+                system_prompt += _WORKSPACE_INSTRUCTION_NO_READ
             async for chunk in self._httpx_chat(
                 session=session, user_message=enriched_message, system_prompt=system_prompt,
             ):
@@ -412,6 +522,16 @@ class TaxAgentEngine:
 
         # 保存对话历史
         session.messages.append({"role": "user", "content": user_message})
+
+        # 自动清理: 只保留最近 10 个 SDK 会话,避免 `~/.claude/projects/`
+        # 持续累积 JSONL(单项目可达数百 MB)。用异步调度避免阻塞流式响应。
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(asyncio.to_thread(_cleanup_sessions_async))
+        except RuntimeError:
+            # 没有 running loop (e.g. 直接调用 chat 而非通过 FastAPI)
+            _cleanup_sessions_async()
 
     async def get_status(self, session_id: str) -> dict:
         """获取会话当前状态"""
@@ -445,6 +565,30 @@ class TaxAgentEngine:
                 pass
         if session_id in self.sessions:
             del self.sessions[session_id]
+
+    async def _evict_other_clients(self, keep_session_id: str) -> None:
+        """断开除 keep_session_id 外所有 session 的 SDK client。
+
+        策略 (单 client): 进程内同一时刻最多存活一个 claude.exe 子进程。
+        每个 ClaudeSDKClient 是一个常驻 CLI 子进程 (空闲 ~300-500MB,
+        多工具调用时飙到 ~2.9GB)。前端每次刷新都新建 session_id,若不回收
+        旧子进程,会累积到撞 OOM,内核杀 claude.exe → :9000 反代返回 502。
+
+        在激活某 session 的 client 前调用,保证"最新对话独占子进程"。
+        单个 disconnect 失败不影响其余回收。
+        """
+        for sid, sess in list(self.sessions.items()):
+            if sid == keep_session_id:
+                continue
+            client = sess._client
+            if client is None:
+                continue
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            sess._client = None
+            sess._mounted_jurisdictions_hash = ""
 
     async def set_jurisdiction(self, session_id: str, jurisdiction: str, tax_type: str = "vat") -> None:
         """切换会话的管辖地和税种(会触发 client 重建)。
@@ -481,29 +625,44 @@ class TaxAgentEngine:
 
         # 仅当 jurisdictions 变化或 client 不存在时重建
         if session._client is None or session._mounted_jurisdictions_hash != jhash:
+            # 单 client 策略: 激活本 session 前,断开其余所有 session 的子进程,
+            # 保证进程内最多一个 claude.exe (防 OOM → 502, 见 _evict_other_clients)。
+            await self._evict_other_clients(keep_session_id=session.session_id)
+
             if session._client:
                 try:
                     await session._client.disconnect()
                 except Exception:
                     pass
 
-            # 组合多国 prompt + workspace 说明
-            slots_as_tuples = [
-                (s.jurisdiction, s.tax_type, s.workspace_path) for s in slots
-            ]
+            # 组合多国 prompt + workspace 说明。
+            # mount-all:system prompt 覆盖全部已挂载 (cc,tt) 的薄段(指针+门禁),
+            # 让 agent 任意会话都能顺手载入某税种 skill 办理;active slot 保留
+            # workspace_path,其余补空。知识在各税种 skill 里按需加载。
+            slots_as_tuples = _all_mounted_slots(slots, self._mcp_servers.keys())
             system_prompt = get_multi_jurisdiction_prompt(slots_as_tuples)
             system_prompt += _WORKSPACE_INSTRUCTION
 
-            # 多国 allowlist(通配符)
-            allowlist = get_multi_jurisdiction_allowlist(slots_as_tuples)
+            # allowlist: 覆盖全部已挂载 MCP server 的 namespace（通配符）。
+            # 原来用 get_multi_jurisdiction_allowlist(slots_as_tuples) 只覆盖活跃
+            # slots，导致其他税种的 namespace 被 SDK 拦截。现改为从 self._mcp_servers
+            # 直接生成，保证所有挂载 server 均可调用。
+            # （slots_as_tuples 仍用于 system_prompt，不受影响。）
+            allowlist = [
+                f"mcp__{info['name']}__*"
+                for info in self._mcp_servers.values()
+            ]
+            allowlist += ["Read", "Glob", "Grep"]
 
-            # 挂载所有 jurisdiction 的 MCP server + 全局 KB
+            # 挂载所有已注册的 MCP server（不限于 active slots）。
+            # self._mcp_servers 在 __init__ 时已枚举全部 jurisdiction/tax_type，
+            # 将它们全部挂载，LLM 通过 namespace 自路由，避免"只暴露当前 slot
+            # 对应税种"的问题（CT/PAYE/SA/SDLT 工具在 VAT-only slot 下也可用）。
             mcp_servers = {}
-            for slot in slots:
-                key = (slot.jurisdiction, slot.tax_type)
-                mcp_info = self._mcp_servers.get(key)
-                if mcp_info:
-                    mcp_servers[mcp_info["name"]] = mcp_info["instance"]
+            for key, mcp_info in self._mcp_servers.items():
+                if key == ("global", "tax_kb"):
+                    continue  # KB 单独处理，避免重复
+                mcp_servers[mcp_info["name"]] = mcp_info["instance"]
             kb_info = self._mcp_servers.get(("global", "tax_kb"))
             if kb_info:
                 mcp_servers[kb_info["name"]] = kb_info["instance"]
@@ -511,10 +670,15 @@ class TaxAgentEngine:
             options_kwargs = {
                 "system_prompt": system_prompt,
                 "allowed_tools": allowlist,
+                # 禁用内置 AskUserQuestion 工具:T.A.X.I. 设计上希望 Agent 直接调用 MCP
+                # 工具读取 workspace(manifest.json 含 VRN/期间等),不要向用户反问选择题。
+                # deny 比 allow 严格,即使 bypassPermissions 也生效。
+                # SDK 字段定义: claude_agent_sdk/types.py:1666
+                "disallowed_tools": ["AskUserQuestion"],
                 "mcp_servers": mcp_servers,
                 "permission_mode": self.permission_mode,
                 "cwd": self.cwd,
-                "add_dirs": [str(WORKSPACE_ROOT)],
+                "add_dirs": [str(AGENT_WORKSPACE_ROOT)],
                 "setting_sources": [],
                 "strict_mcp_config": True,
                 "include_partial_messages": True,
@@ -522,12 +686,15 @@ class TaxAgentEngine:
                 "env": {
                     k: v
                     for k, v in {
-                        "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL"),
+                        # Provider config is fixed from agent_provider.local.json.
+                        # Do NOT read parent-shell ANTHROPIC_* here.
+                        "ANTHROPIC_BASE_URL": self._provider.base_url,
                         "ANTHROPIC_AUTH_TOKEN": self.api_key,
                         "ANTHROPIC_API_KEY": self.api_key,
-                        "ANTHROPIC_DEFAULT_SONNET_MODEL": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL"),
-                        "ANTHROPIC_DEFAULT_HAIKU_MODEL": os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
-                        "ANTHROPIC_DEFAULT_OPUS_MODEL": os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+                        "ANTHROPIC_MODEL": self._provider.model,
+                        "ANTHROPIC_DEFAULT_SONNET_MODEL": self._provider.model,
+                        "ANTHROPIC_DEFAULT_HAIKU_MODEL": self._provider.model,
+                        "ANTHROPIC_DEFAULT_OPUS_MODEL": self._provider.model,
                         "CLAUDE_CODE_ENABLE_TELEMETRY": os.environ.get("CLAUDE_CODE_ENABLE_TELEMETRY"),
                         "OTEL_TRACES_EXPORTER": os.environ.get("OTEL_TRACES_EXPORTER"),
                         "OTEL_METRICS_EXPORTER": os.environ.get("OTEL_METRICS_EXPORTER"),
@@ -539,12 +706,17 @@ class TaxAgentEngine:
                     if v
                 },
             }
-            model_name = (
-                os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-                or os.environ.get("ANTHROPIC_MODEL")
-            )
-            if model_name:
-                options_kwargs["model"] = model_name
+            options_kwargs["model"] = self._provider.model
+
+            # Skill 插件:一个国家一个 local plugin。setting_sources=[] 会屏蔽
+            # .claude/skills 发现,但 plugins(--plugin-dir)独立于 setting_sources;
+            # skills="all" 让 SDK 把发现的插件 skill 全部启用,并自动把 `Skill`
+            # 工具追加进 allowed_tools(裸 Skill 覆盖所有 skill,无需粒度项)。
+            # 知识(税率/表结构/workflow)放在 skill body,渐进披露按需加载。
+            _skill_plugins = _derive_skill_plugins(self._mcp_servers.keys())
+            if _skill_plugins:
+                options_kwargs["plugins"] = _skill_plugins
+                options_kwargs["skills"] = "all"
 
             # 注册税法调研 sub-agent
             from backend.agent.tax_knowledge_prompts import TAX_KB_SUBAGENT_PROMPT
@@ -553,27 +725,52 @@ class TaxAgentEngine:
                 "tax_kb_researcher": AgentDefinition(
                     description="Tax law research sub-agent",
                     prompt=TAX_KB_SUBAGENT_PROMPT,
-                    tools=["mcp__tax_agent_global_tax_kb__search_tax_knowledge"],
-                    maxTurns=3,
+                    tools=[
+                        "mcp__tax_agent_global_tax_kb__search_tax_knowledge",
+                        "mcp__tax_agent_global_tax_kb__list_supported_jurisdictions",
+                        "mcp__tax_agent_global_tax_kb__get_tax_rates",
+                    ],
+                    maxTurns=10,
                 )
             }
 
-            # CLI 子进程 stderr 透传
+            # CLI 子进程 stderr 透传 —— 带时间戳落盘 + 同步透传到 stderr 便于 live tail
+            # 这是 Python SDK 0.2.95 唯一支持的"看 CLI 在干嘛"的方式:
+            # debug_stderr 已被 deprecated,TypeScript 的 debugFile 选项没暴露给 Python。
+            # 看 logs/sdk-debug.log 即可逐行追踪 CLI 子进程。
             import sys as _sys
-            options_kwargs["stderr"] = lambda line: _sys.stderr.write(
-                "[claude-cli] " + str(line).rstrip() + "\n"
-            )
+            from pathlib import Path as _Path
+            _log_dir = _Path(__file__).resolve().parents[2] / "logs"
+            _log_dir.mkdir(parents=True, exist_ok=True)
+            _cli_log = logging.getLogger("backend.agent.claude_cli")
+            if not _cli_log.handlers:
+                _fh = logging.FileHandler(_log_dir / "sdk-debug.log", encoding="utf-8")
+                _fh.setFormatter(logging.Formatter(
+                    "%(asctime)s.%(msecs)03d %(levelname)s [claude-cli] %(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S",
+                ))
+                _sh = logging.StreamHandler(_sys.stderr)
+                _sh.setFormatter(logging.Formatter("[claude-cli] %(message)s"))
+                _cli_log.addHandler(_fh)
+                _cli_log.addHandler(_sh)
+                _cli_log.setLevel(logging.INFO)
+                _cli_log.propagate = False
+            options_kwargs["stderr"] = lambda line: _cli_log.info(str(line).rstrip())
 
             options = ClaudeAgentOptions(**options_kwargs)
             session._client = ClaudeSDKClient(options=options)
             await session._client.__aenter__()
             session._mounted_jurisdictions_hash = jhash
+            session._init_skills_checked = False  # 新连接 → 重新做一次 init 自检
 
         session.status = "chatting"
         client = session._client
 
         try:
             await client.query(user_message, session_id=session.session_id)
+
+            # 立即通知前端 agent 已进入思考阶段（填补 query→首事件的空窗期）
+            yield {"__agui__": "step_start", "step_name": "thinking"}
 
             # AG-UI 协议关键：include_partial_messages=True 时，CLI 在每个
             # content_block_delta 上 emit StreamEvent(delta)；之后还会 emit
@@ -625,6 +822,8 @@ class TaxAgentEngine:
                             yield {"__agui__": "reasoning_content", "delta": block.thinking}
                             yield {"__agui__": "reasoning_end"}
                         elif isinstance(block, ToolUseBlock):
+                            # 通知前端：从"思考"切换到"调工具"
+                            yield {"__agui__": "step_start", "step_name": f"tool:{block.name}"}
                             # 工具调用 → 发结构化信号给 AG-UI 适配器
                             tool_id = (
                                 getattr(block, "id", None)
@@ -677,13 +876,31 @@ class TaxAgentEngine:
                         session.session_id, "SDK_CHAT", "tool_completed",
                         {"tool_id": tool_id, "content_len": len(content_str)},
                     )
+                    # 工具执行完毕 → 回到"思考"阶段
+                    yield {"__agui__": "step_start", "step_name": "thinking"}
 
                 elif isinstance(msg, SystemMessage):
                     if msg.subtype == "notification":
                         data = msg.data or {}
                         yield f"\n📢 {data.get('message', '')}\n"
+                    elif msg.subtype == "init" and not session._init_skills_checked:
+                        # init 每会话只发一次 → 自检 skill 插件是否按预期加载。
+                        # SystemMessage 无 typed 属性,从 .data 读 skills/plugins。
+                        session._init_skills_checked = True
+                        loaded = set((msg.data or {}).get("skills") or [])
+                        expected = _expected_skill_names(self._mcp_servers.keys())
+                        missing = expected - loaded
+                        if missing:
+                            logging.getLogger(__name__).warning(
+                                "Skill plugins not fully loaded: missing=%s loaded=%s "
+                                "(plugins=%s)",
+                                sorted(missing), sorted(loaded),
+                                (msg.data or {}).get("plugins"),
+                            )
 
                 elif isinstance(msg, ResultMessage):
+                    # 关闭残留 step（如有）
+                    yield {"__agui__": "step_end", "step_name": ""}
                     if msg.is_error:
                         yield f"\n❌ Agent 错误: {msg.result or 'Unknown error'}\n"
                     else:
@@ -697,6 +914,7 @@ class TaxAgentEngine:
                     )
 
         except Exception as e:
+            yield {"__agui__": "step_end", "step_name": ""}
             yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax (无 MCP 工具)...\n"
             yield {"__agui__": "tool_unavailable", "reason": f"sdk_fallback: {type(e).__name__}: {str(e)[:120]}"}
             try:
@@ -718,6 +936,9 @@ class TaxAgentEngine:
                 "Do NOT fabricate any numeric tax values. If the user asks for "
                 "calculations, tell them the toolchain is offline and stop."
             )
+            # 即便降级到此路径,workspace 数据(若有)仍已落盘 — 告知 agent 别反问
+            if any(s.workspace_path for s in session.jurisdictions):
+                system_prompt += _WORKSPACE_INSTRUCTION_NO_READ
             async for chunk in self._httpx_chat(
                 session=session,
                 user_message=user_message,
@@ -739,19 +960,9 @@ class TaxAgentEngine:
         本实现走真流式（httpx_sse.aconnect_sse），逐 token yield —
         不再像之前那样先 await 整个响应再一次性 parse。
         """
-        base_url = (
-            os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
-        )
+        base_url = self._provider.base_url.rstrip("/")
         url = f"{base_url}/v1/messages"
-        # model: MiniMax 真实模型名是 "MiniMax-M3"（不带方括号），需从 env 清洗
-        raw_model = (
-            os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-            or os.environ.get("ANTHROPIC_MODEL")
-            or "MiniMax-M3"
-        )
-        # 清洗 [1m] 等后缀
-        import re
-        model_name = re.sub(r"\[.*?\]", "", raw_model).strip() or "MiniMax-M3"
+        model_name = self._provider.model
 
         req_body = {
             "model": model_name,
@@ -846,6 +1057,7 @@ class TaxAgentEngine:
                     ws_prefix += f"  - {cc}: {s.workspace_path}\n"
 
         # 演示用的推理片段
+        yield {"__agui__": "step_start", "step_name": "thinking"}
         yield {"__agui__": "reasoning_start"}
         for piece in (
             "用户提问: " + user_message[:40] + "\n",
@@ -868,6 +1080,7 @@ class TaxAgentEngine:
             yield f"2. 自动计算申报表\n"
             yield f"3. 验证数据合规性\n"
             yield f"4. 提交申报\n"
+            yield {"__agui__": "step_end", "step_name": ""}
             return
 
         if getattr(session, "raw_business_data", None) and ("分析" in user_message or "analyze" in msg_lower or "计算" in msg_lower or "报税" in msg_lower):
@@ -921,6 +1134,7 @@ class TaxAgentEngine:
             yield "✅ 分析完成。\n\n"
             yield "   要继续报税，请确认以上数据，我将为您提交至 HMRC。"
             session.status = "confirming"
+            yield {"__agui__": "step_end", "step_name": ""}
             return
 
         if "报税" in user_message or "filing" in msg_lower:
@@ -988,6 +1202,7 @@ class TaxAgentEngine:
                 yield "Mock 模式功能有限 — 请安装 SDK 并配置 API key 获得完整体验。"
             else:
                 yield "5. 查询已提交的申报\n\n请告诉我您需要什么帮助？"
+        yield {"__agui__": "step_end", "step_name": ""}
 
     # ── Helpers ──
 

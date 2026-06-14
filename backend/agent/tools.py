@@ -112,7 +112,8 @@ def _resolve_method_name(tool_set, meta_name: str) -> str:
         return aliases[meta_name]
 
     # 常见映射：按税种前缀逐一尝试去除（不一定在开头）
-    for prefix in ("vat_", "self_assessment_", "corporation_tax_", "paye_", "stamp_duty_"):
+    # CN 前缀放最前：hasattr 守卫保证不会被 "vat_" 误剥成不存在的方法
+    for prefix in ("cn_vat_", "cn_cit_", "vat_", "self_assessment_", "corporation_tax_", "paye_", "stamp_duty_"):
         if prefix in meta_name:
             candidate = meta_name.replace(prefix, "", 1)
             if hasattr(tool_set, candidate):
@@ -292,8 +293,17 @@ def _make_tool_wrapper(tool_set, method_name: str, meta: dict):
 # MCP Server Factory
 # ═══════════════════════════════════════════════════════════
 
-def create_mcp_servers(registry: JurisdictionRegistry | None = None) -> dict[tuple[str, str], dict]:
+def create_mcp_servers(
+    registry: JurisdictionRegistry | None = None,
+    kb_store: "TaxKnowledgeStore | None" = None,
+) -> dict[tuple[str, str], dict]:
     """为所有已注册的管辖地/税种创建 MCP Server
+
+    Args:
+        registry: JurisdictionRegistry 实例;None 时用全局注入的那个。
+        kb_store: 可选的预创建 TaxKnowledgeStore,用于让 corpus sync router
+                  在合并后能 .reload() 同一个实例。如果不传,函数内部自己
+                  创建一个(向后兼容,例如直接调用此函数做测试时)。
 
     Returns:
         {(country_code, tax_type_value): {"name": str, "instance": MCP server}}
@@ -358,8 +368,13 @@ def create_mcp_servers(registry: JurisdictionRegistry | None = None) -> dict[tup
     # Global tax-knowledge server (not tied to a jurisdiction)
     # ═══════════════════════════════════════════════════════════
     from backend.agent.tax_knowledge_tools import TaxKnowledgeAgentToolSet
+    from backend.agent.tax_knowledge_store import TaxKnowledgeStore
 
-    kb_tool_set = TaxKnowledgeAgentToolSet()
+    if kb_store is not None:
+        kb_tool_set = TaxKnowledgeAgentToolSet(store=kb_store)
+    else:
+        # 向后兼容:未显式传入时自己创建一个。
+        kb_tool_set = TaxKnowledgeAgentToolSet()
     kb_metadata = kb_tool_set.get_tool_metadata()
     kb_wrapped = []
     for meta in kb_metadata:

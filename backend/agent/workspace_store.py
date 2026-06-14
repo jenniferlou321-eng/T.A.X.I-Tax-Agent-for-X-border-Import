@@ -1,9 +1,12 @@
-"""Workspace Store — case 数据落盘为多文件,让 LLM 用 Read 工具按需读取
+"""Workspace Store — 把当前 case 投影到 Agent 固定工作目录。
 
-布局: ~/.taxi/workspace/<case_id>/  →  manifest.json, sales.json, purchases.json,
-      nine_box.json, warnings.json, source_meta.json, source_docs/*.json
+Active layout:
+    ~/.taxi/agent_workspace/
+      manifest.json, sales.json, purchases.json, nine_box.json, warnings.json,
+      source_meta.json, source_docs/*.json
+      related_cases/<case_id>/...   # 多实体/跨境 case 的关联实体
 
-幂等: manifest.json 已存在时跳过重写,直接返回路径+manifest dict。
+默认目录为空;选择 case 时先清空再复制当前 case;前端清空数据时也清空。
 """
 from __future__ import annotations
 
@@ -21,6 +24,12 @@ WORKSPACE_ROOT = Path(
     os.environ.get("TAXI_WORKSPACE_ROOT") or (Path.home() / ".taxi" / "workspace")
 )
 
+# Agent 只看这个固定 active workspace。默认空;选择 case 后把该 case 投影进来;
+# 前端清空数据时清空该目录。保留 WORKSPACE_ROOT 仅作旧数据兼容/人工排查。
+AGENT_WORKSPACE_ROOT = Path(
+    os.environ.get("TAXI_AGENT_WORKSPACE_ROOT") or (Path.home() / ".taxi" / "agent_workspace")
+)
+
 
 def _safe_case_id(case_id: str) -> str:
     """sanitize case_id 防止路径注入(只允许字母数字下划线中划线)"""
@@ -28,7 +37,7 @@ def _safe_case_id(case_id: str) -> str:
 
 
 def case_dir(case_id: str) -> Path:
-    """返回 workspace 下某 case 的目录(mkdir -p)"""
+    """返回 legacy workspace 下某 case 的目录(mkdir -p)。"""
     d = WORKSPACE_ROOT / _safe_case_id(case_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -40,23 +49,17 @@ def _write_json(path: Path, data) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dict]:
-    """确保 case 落盘到 workspace(拆多文件)
+def clear_agent_workspace() -> str:
+    """清空 Agent 固定工作目录,并保持目录本身存在。"""
+    if AGENT_WORKSPACE_ROOT.exists():
+        shutil.rmtree(AGENT_WORKSPACE_ROOT)
+    AGENT_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+    return str(AGENT_WORKSPACE_ROOT)
 
-    如果目标目录已有 manifest.json,直接返回(幂等);否则从 raw_data 或 fixture 写入。
-    """
+
+def _write_case_to_dir(case_id: str, target: Path, raw_data: Optional[dict] = None) -> dict:
+    """把一个 case 拆成 manifest/sales/purchases/... 写到 target。"""
     safe_id = _safe_case_id(case_id)
-    target = case_dir(safe_id)
-
-    # 快速路径: workspace 已存在 → 读 manifest 返回,不重写文件
-    manifest_path = target / "manifest.json"
-    if manifest_path.is_file() and raw_data is None:
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                return str(target), json.load(f)
-        except Exception:
-            pass  # 损坏则重建
-
     if raw_data is None:
         loaded = load_demo_case(safe_id)
         raw_data = loaded.model_dump(mode="json") if hasattr(loaded, "model_dump") else dict(loaded)
@@ -76,6 +79,7 @@ def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dic
             except Exception:
                 pass
     company = {
+        "case_id": safe_id,
         "name": metadata.get("company") or summary.get("company") or raw_data.get("company", ""),
         "vrn": metadata.get("vrn") or summary.get("vrn") or raw_data.get("vrn", ""),
         "period": metadata.get("period") or summary.get("period") or {},
@@ -89,6 +93,8 @@ def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dic
     # period 可能是 string 或 dict;确保 manifest 统一存 string
     if isinstance(company["period"], dict):
         company["period"] = company["period"].get("label", "") or str(company["period"])
+
+    target.mkdir(parents=True, exist_ok=True)
     _write_json(target / "manifest.json", company)
     _write_json(target / "sales.json", raw_data.get("sales", []))
     _write_json(target / "purchases.json", raw_data.get("purchases", []))
@@ -111,4 +117,26 @@ def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dic
             shutil.rmtree(dst_docs)
         shutil.copytree(src_docs, dst_docs)
 
-    return str(target), company
+    return company
+
+
+def mount_cases(case_ids: list[str], raw_data: Optional[dict] = None) -> list[tuple[str, dict]]:
+    """把当前选择的 case 投影到 Agent 固定工作目录。
+
+    - 第一个 case 写到 `~/.taxi/agent_workspace/` 根目录,Agent 默认先读这里。
+    - 其余 case(跨境相关实体)写到 `related_cases/<case_id>/`。
+    - 每次 mount 都先清空固定目录,所以不会残留上一个 case 的数据。
+    """
+    clear_agent_workspace()
+    mounted: list[tuple[str, dict]] = []
+    for i, cid in enumerate(case_ids):
+        target = AGENT_WORKSPACE_ROOT if i == 0 else AGENT_WORKSPACE_ROOT / "related_cases" / _safe_case_id(cid)
+        manifest = _write_case_to_dir(cid, target, raw_data if i == 0 else None)
+        mounted.append((str(target), manifest))
+    return mounted
+
+
+def ensure_case(case_id: str, raw_data: Optional[dict] = None) -> tuple[str, dict]:
+    """兼容旧调用:把单个 case mount 到固定 Agent workspace。"""
+    mounted = mount_cases([case_id], raw_data)
+    return mounted[0]

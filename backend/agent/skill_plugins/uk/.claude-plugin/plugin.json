@@ -1,0 +1,5 @@
+{
+  "name": "uk",
+  "description": "UK tax filing skills (VAT, Corporation Tax, PAYE, Self Assessment, SDLT) for T.A.X.I. Each skill carries the rates, form structure, special rules and tool-call formats for one UK tax type.",
+  "version": "0.1.0"
+}

@@ -38,6 +38,64 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 
 
+def _classify_error(e: BaseException) -> tuple[str, str]:
+    """把异常分类成 (kind, hint),给前端 ErrorCard 用。
+
+    kind 取值固定集合:network / auth / timeout / validation / rate_limit / internal。
+    hint 是一行"人话"指引,例如"检查 agent_provider.local.json 的 api_key 是否设置"。
+
+    顺序很关键 — Python 3.11 里 TimeoutError / PermissionError 都是 OSError 子类,
+    所以先按 string match 分类,最后才用 isinstance。
+    """
+    etype = type(e).__name__
+    msg = str(e)
+    low = msg.lower()
+
+    # 限流(消息里有 "rate" + "limit" 或状态码 429)
+    if ("rate" in low and "limit" in low) or "429" in msg:
+        return ("rate_limit", "触发 LLM 限流。稍候重试,或升级 API 套餐。")
+    # 超时
+    if "timeout" in low or "timed out" in low or etype == "TimeoutError":
+        return ("timeout", "上游 LLM 响应超时。可重试,或在 .env 调高 SDK_TIMEOUT。")
+    # 鉴权
+    if (
+        "api key" in low
+        or "unauthorized" in low
+        or "authentication" in low
+        or "401" in msg
+        or "403" in msg
+        or etype in ("AuthenticationError", "PermissionDeniedError")
+    ):
+        return (
+            "auth",
+            "API key 无效或缺失。检查 agent_provider.local.json 的 api_key 是否正确、是否过期。",
+        )
+    # 网络层(SDK/CLI 子进程 / httpx 连不上)— 必须放鉴权/超时之后,
+    # 否则 ConnectionRefusedError / TimeoutError / PermissionError 这些 OSError 子类
+    # 会被一刀切。
+    if (
+        isinstance(e, (ConnectionError,))
+        or etype in ("ConnectionRefusedError", "ConnectionResetError", "EOFError")
+        or "connection" in low
+        or "eof" in low
+    ):
+        return (
+            "network",
+            "后端连不上上游 LLM 服务。检查 agent_provider.local.json 的 base_url / 网络是否能访问。",
+        )
+    # 校验
+    if etype in ("ValueError", "TypeError", "KeyError", "ValidationError"):
+        return (
+            "validation",
+            "输入数据或工具参数校验失败。检查 case_id / line_items 是否与模板一致。",
+        )
+    # 兜底
+    return (
+        "internal",
+        f"未分类错误({etype})。复制右侧 Details 贴给开发,或查 logs/sdk-debug.log。",
+    )
+
+
 class _AguiStreamState:
     """Per-run mutable state for AG-UI event sequencing.
 
@@ -54,11 +112,15 @@ class _AguiStreamState:
         self.tool_parent_msg_id: Optional[str] = None
         self.tool_open: bool = False
         self.step_open: bool = False
+        self.current_step_name: str = ""
         # 扩展思考（extended thinking）：与 text / tool 并行的独立句柄。
         # 模型可同时开着 text + reasoning（先思考再开口）；
         # 我们的协议允许多个 content handle 共存。
         self.reasoning_msg_id: str = str(uuid.uuid4())
         self.reasoning_open: bool = False
+        # 请求级 trace id:由 router 在调 stream_agui_events 之前 set,
+        # 透传到 RUN_ERROR 事件,前端可贴进工单 / 拿来和 logs/sdk-debug.log 对照。
+        self.request_id: str = ""
 
 
 async def stream_agui_events(
@@ -72,11 +134,17 @@ async def stream_agui_events(
     uploaded_data: Optional[list] = None,
     case_id: Optional[str] = None,
     case_ids: Optional[list[str]] = None,
+    request_id: Optional[str] = None,
 ) -> AsyncIterator[str]:
-    """运行 engine.chat 并把内部 yield 转成 SSE 字符串（AG-UI 格式）。"""
+    """运行 engine.chat 并把内部 yield 转成 SSE 字符串（AG-UI 格式）。
+
+    request_id: 透传到 RUN_ERROR 事件,便于和 logs/sdk-debug.log 对照。允许外部
+    传入(由 router 生成);不传则自动生成一个。
+    """
     enc = EventEncoder()
     rid = run_id or str(uuid.uuid4())
     st = _AguiStreamState()
+    st.request_id = request_id or str(uuid.uuid4())
 
     # ── 1) lifecycle: RUN_STARTED ──
     yield enc.encode(
@@ -260,24 +328,33 @@ async def stream_agui_events(
                     )
 
                 elif kind == "step_start":
-                    if not st.step_open:
+                    # 自动关闭前一个 step（如有），再开新 step
+                    if st.step_open:
                         yield enc.encode(
-                            StepStartedEvent(
-                                type=EventType.STEP_STARTED,
-                                step_name=chunk["step_name"],
+                            StepFinishedEvent(
+                                type=EventType.STEP_FINISHED,
+                                step_name=st.current_step_name,
                             )
                         )
-                        st.step_open = True
+                    yield enc.encode(
+                        StepStartedEvent(
+                            type=EventType.STEP_STARTED,
+                            step_name=chunk["step_name"],
+                        )
+                    )
+                    st.step_open = True
+                    st.current_step_name = chunk["step_name"]
 
                 elif kind == "step_end":
                     if st.step_open:
                         yield enc.encode(
                             StepFinishedEvent(
                                 type=EventType.STEP_FINISHED,
-                                step_name=chunk["step_name"],
+                                step_name=st.current_step_name,
                             )
                         )
                         st.step_open = False
+                        st.current_step_name = ""
 
                 # 未知 kind 静默忽略
                 continue
@@ -300,9 +377,11 @@ async def stream_agui_events(
             yield enc.encode(
                 StepFinishedEvent(
                     type=EventType.STEP_FINISHED,
-                    step_name="(inferred)",
+                    step_name=st.current_step_name or "(inferred)",
                 )
             )
+            st.step_open = False
+            st.current_step_name = ""
 
         # ── lifecycle: RUN_FINISHED ──
         yield enc.encode(
@@ -344,9 +423,31 @@ async def stream_agui_events(
             except Exception:
                 pass
             st.tool_open = False
+        if st.step_open:
+            try:
+                yield enc.encode(
+                    StepFinishedEvent(
+                        type=EventType.STEP_FINISHED,
+                        step_name=st.current_step_name or "(error)",
+                    )
+                )
+            except Exception:
+                pass
+            st.step_open = False
+            st.current_step_name = ""
+        # ── 增强的 RUN_ERROR payload（前端 ErrorCard 直接消费）
+        # ConfiguredBaseModel 开了 extra="allow" (ag_ui/core/types.py:12-19)，
+        # 所以下面这些字段会随 SSE 一起序列化到前端。
+        kind, hint = _classify_error(e)
         yield enc.encode(
             RunErrorEvent(
                 type=EventType.RUN_ERROR,
                 message=f"{type(e).__name__}: {e}",
+                code=kind,
+                # 额外字段(extra="allow"):
+                errorKind=kind,
+                errorHint=hint,
+                errorStage=st.current_step_name or None,
+                requestId=st.request_id,
             )
         )

@@ -120,6 +120,9 @@ def calculate_vat_return_from_raw(data: dict) -> VATSummary:
     """
     summary = VATSummary()
     company = data.get("company", {})
+    # 兼容 ImportResult 风格: company 可能是字符串（公司名），而非 dict
+    if not isinstance(company, dict):
+        company = {"name": str(company)}
     period = company.get("period", {})
 
     summary.company_name = company.get("name", "")
@@ -569,6 +572,12 @@ def analyze_business_data(company_data_json: str) -> dict:
     #   - `purchases` → `purchase_invoices`
     #   - `tax_code` (T1/T2/T0...) → `type` (domestic_b2b / eu_acquisition / ...)
     # 翻译失败时（旧 case / 其他来源）原样保留字段，下游逻辑不会崩。
+
+    # 兼容 ImportResult 风格: company 可能是字符串（公司名），不是 dict。
+    # calculate_vat_return_from_raw 内部已有防御，此处提前规范化，统一格式。
+    if isinstance(data.get("company"), str):
+        data["company"] = {"name": data["company"]}
+
     if "sales" in data and "sales_invoices" not in data:
         data["sales_invoices"] = [
             _importresult_to_raw_row(s, "sale") for s in data["sales"]

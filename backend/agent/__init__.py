@@ -5,8 +5,9 @@
 用法:
     from backend.agent import TaxAgentEngine
 
+    # Provider api_key/base_url/model 固定从 repo-root agent_provider.local.json 读取,
+    # 不读父 shell 的 ANTHROPIC_* 环境变量。
     engine = TaxAgentEngine(
-        api_key=os.environ.get("ANTHROPIC_API_KEY"),
         cwd="/path/to/project",
         permission_mode="default",
     )

@@ -155,3 +155,45 @@ def delete_session(session_id: str) -> bool:
         return True
     except (ValueError, FileNotFoundError, OSError):
         return False
+
+
+# ── 自动清理 ──
+
+def cleanup_old_sessions(keep: int = 10) -> int:
+    """保留最近 N 个会话,删除其余的(按 last_modified 倒序)。
+
+    适用场景:SDK 会话 JSONL 持续累积在 `~/.claude/projects/<proj>/`,
+    单项目可达数百 MB。每轮 chat 后/启动时调用,把磁盘占用控制在 keep 份。
+
+    Args:
+        keep: 保留的最近会话数。默认 10。
+
+    Returns:
+        删除的会话数。
+    """
+    if keep < 0:
+        keep = 0
+    try:
+        sessions = _sdk_list_sessions(directory=_CWD, include_worktrees=False)
+    except Exception:
+        return 0
+
+    if len(sessions) <= keep:
+        return 0
+
+    # SDK 返回顺序: 已按 last_modified 倒序;显式再排一次以防万一
+    sessions_sorted = sorted(
+        sessions,
+        key=lambda s: getattr(s, "last_modified", 0) or 0,
+        reverse=True,
+    )
+    to_delete = sessions_sorted[keep:]
+    deleted = 0
+    for s in to_delete:
+        try:
+            _sdk_delete_session(s.session_id, directory=_CWD)
+            deleted += 1
+        except (ValueError, FileNotFoundError, OSError):
+            # 单个失败不影响其他删除
+            continue
+    return deleted

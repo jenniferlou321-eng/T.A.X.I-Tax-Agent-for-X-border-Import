@@ -24,8 +24,19 @@ class TaxKnowledgeAgentToolSet(AgentToolSet):
     country_code = "global"
     tax_type = "tax_kb"
 
-    def __init__(self, store_base_path: Optional[str] = None):
-        self.store = TaxKnowledgeStore(base_path=store_base_path)
+    def __init__(
+        self,
+        store_base_path: Optional[str] = None,
+        store: Optional[TaxKnowledgeStore] = None,
+    ):
+        # Prefer an externally-owned store (so callers — like the corpus sync
+        # router — can call .reload() on the same instance the tool set uses).
+        # Fall back to constructing one from `store_base_path` for backward
+        # compatibility (existing tests, direct instantiation).
+        if store is not None:
+            self.store = store
+        else:
+            self.store = TaxKnowledgeStore(base_path=store_base_path)
 
     async def get_obligations(self, taxpayer_id: str, status_filter: str = "") -> dict:
         return _tool_error("get_obligations is not applicable to the global tax knowledge server")
@@ -46,8 +57,25 @@ class TaxKnowledgeAgentToolSet(AgentToolSet):
         if not jurisdiction or not tax_type or not query:
             return _tool_error("jurisdiction, tax_type, and query are required")
         sections = self.store.search(jurisdiction, tax_type, query, top_k=5)
-        results = [{"title": s.title, "content": s.content, "source_path": s.source_path} for s in sections]
-        return _tool_ok({"success": True, "jurisdiction": jurisdiction, "tax_type": tax_type, "query": query, "results": results})
+        results = [
+            {
+                "title": s.title,
+                "content": s.content[:2000],   # 截断，避免 token 爆炸
+                "url": s.url,
+                "source_authority": s.source_authority,
+                "tax_tags": s.tax_tags,
+                "status": s.status,
+            }
+            for s in sections
+        ]
+        return _tool_ok({
+            "success": True,
+            "jurisdiction": jurisdiction,
+            "tax_type": tax_type,
+            "query": query,
+            "total_hits": len(results),
+            "results": results,
+        })
 
     async def get_tax_rates(self, jurisdiction: str, tax_type: str, year: Optional[str] = None) -> dict:
         """从 KB 读 ## Rates 段。
@@ -70,11 +98,9 @@ class TaxKnowledgeAgentToolSet(AgentToolSet):
                 "year": year,
                 "rates": {"note": f"Rate table not yet available for {jurisdiction}/{tax_type}"},
             })
-        # 解析 section.content 里的 ```json ... ``` 块
         import re
         m = re.search(r"```json\s*(\{.*?\})\s*```", section.content, re.DOTALL)
         if m is None:
-            # 段存在但无 JSON 块(SA / PAYE 等按 band 征税)
             return _tool_ok({
                 "success": True,
                 "jurisdiction": jurisdiction,
@@ -93,19 +119,39 @@ class TaxKnowledgeAgentToolSet(AgentToolSet):
 
     async def list_supported_jurisdictions(self) -> dict:
         supported = self.store.list_supported()
-        return _tool_ok({"success": True, "supported": [{"jurisdiction": j, "tax_type": t} for j, t in supported], "count": len(supported)})
+        return _tool_ok({
+            "success": True,
+            "supported": [{"jurisdiction": j, "tax_type": t} for j, t in supported],
+            "count": len(supported),
+        })
 
     def get_tool_metadata(self) -> list[dict]:
         return [
             {
                 "name": "search_tax_knowledge",
-                "description": "Search the tax knowledge base for relevant sections. Intended for the tax_kb_researcher sub-agent.",
+                "description": (
+                    "Search the UK tax knowledge base for relevant legal provisions. "
+                    "Uses BM25 semantic search over 8,300+ HMRC manual sections, "
+                    "GOV.UK publications, and VOA guidance. "
+                    "Each result includes the official URL, source authority, "
+                    "tax tags, and status (current/withdrawing/withdrawn/under_review/moved). "
+                    "Always cite the URL in your answer."
+                ),
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "jurisdiction": {"type": "string", "description": "Country code, e.g. 'uk'"},
-                        "tax_type": {"type": "string", "description": "Tax type, e.g. 'vat'"},
-                        "query": {"type": "string", "description": "Search query"},
+                        "tax_type": {
+                            "type": "string",
+                            "description": (
+                                "Tax type tag, e.g. 'vat', 'corporation_tax', 'income_tax', "
+                                "'capital_gains_tax', 'paye', 'self_assessment', "
+                                "'national_insurance', 'stamp_duty_land_tax', "
+                                "'inheritance_tax', 'hmrc_penalties_and_interest', etc. "
+                                "Use list_supported_jurisdictions to see all available tags."
+                            ),
+                        },
+                        "query": {"type": "string", "description": "Search query in natural language"},
                     },
                     "required": ["jurisdiction", "tax_type", "query"],
                 },
