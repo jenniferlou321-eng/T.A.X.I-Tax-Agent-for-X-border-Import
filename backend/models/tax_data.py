@@ -15,6 +15,19 @@ class TaxType(Enum):
     STAMP_DUTY = "stamp_duty"
     CAPITAL_GAINS = "capital_gains"
     NATIONAL_INSURANCE = "national_insurance"
+    IMPORT_DUTY = "import_duty"
+    BUSINESS_RATES = "business_rates"
+    WITHHOLDING_TAX = "withholding_tax"
+    APPRENTICESHIP_LEVY = "apprenticeship_levy"
+    # CN tax types
+    CN_VAT = "cn_vat"
+    CN_CIT = "cn_cit"
+    CN_IIT = "cn_iit"                       # 个人所得税
+    CN_SURCHARGES = "cn_surcharges"          # 城建税/教育费附加
+    CN_STAMP_DUTY = "cn_stamp_duty"          # 印花税
+    CN_PROPERTY_TAX = "cn_property_tax"      # 房产税
+    CN_REAL_ESTATE_RENTAL_VAT = "cn_real_estate_rental_vat"  # 不动产租赁 VAT
+    CN_PROPERTY_MGMT_VAT = "cn_property_mgmt_vat"  # 物业管理服务 VAT
 
 
 class PeriodType(Enum):

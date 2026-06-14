@@ -10,12 +10,13 @@ import json
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Response
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from backend.agent import TaxAgentEngine
 from backend.agent.agui_adapter import stream_agui_events
 from backend.agent.session_store import list_sessions, get_session_messages, delete_session
+from backend.agent.workspace_store import AGENT_WORKSPACE_ROOT, clear_agent_workspace, mount_cases
 
 # AG-UI 协议标准请求体类型（threadId/runId/messages/state/...）。
 # 当 `ag-ui-protocol` 不可用时降级为 Any — 这样 dev 环境也能 import。
@@ -47,6 +48,7 @@ def get_engine() -> TaxAgentEngine:
 
 @router.post("/chat")
 async def agent_chat(
+    response: Response,
     session_id: Optional[str] = Query(None),
     message: str = Query(...),
     raw_data: Optional[str] = Query(None),
@@ -60,8 +62,31 @@ async def agent_chat(
     case_ids 优先(多管辖地):逗号分隔的 case_id 列表,后端为每个创建 JurisdictionSlot。
     case_id 单个(向后兼容)。
     raw_data 保留兼容老客户端。
+
+    错误处理:任何在第一个 SSE 事件之前的失败(例如 engine 未初始化),会返回
+    JSON 错误体 `{detail, kind, hint, request_id}` + 4xx/5xx 状态码 + X-Request-Id
+    头,供前端 ErrorCard 直接消费。
     """
-    engine = get_engine()
+    # 给这次 run 一个稳定 id,响应头带回,失败时也回在 JSON body 里。
+    request_id = str(uuid.uuid4())
+    response.headers["X-Request-Id"] = request_id
+
+    try:
+        engine = get_engine()
+    except Exception as e:
+        from backend.agent.agui_adapter import _classify_error
+        kind, hint = _classify_error(e)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": f"{type(e).__name__}: {e}",
+                "kind": kind,
+                "hint": hint,
+                "request_id": request_id,
+            },
+            headers={"X-Request-Id": request_id},
+        )
+
     sid = session_id or str(uuid.uuid4())
     tid = thread_id or sid
     rid = run_id or str(uuid.uuid4())
@@ -85,12 +110,40 @@ async def agent_chat(
             raw_business_data=raw_business_data,
             case_id=case_id,
             case_ids=parsed_case_ids,
+            request_id=request_id,
         ):
             yield sse
 
+    # 流式响应:包一层,确保启动期(还没 yield 第一个 event 就死)也能给前端
+    # 看到结构化错误,而不是一段莫名其妙的 500 + 空 body。
+    async def safe_event_stream():
+        try:
+            async for sse in event_stream():
+                yield sse
+        except Exception as e:
+            # 走到这里说明在 RUN_STARTED 之后、stream 中途崩了 — 走 RUN_ERROR 路径
+            # 已经发不出来,只能直接发一个 RUN_ERROR SSE 事件。借助 agui_adapter
+            # 的分类器保持一致的 kind/hint。
+            from ag_ui.core import EventType, RunErrorEvent
+            from ag_ui.encoder import EventEncoder
+            from backend.agent.agui_adapter import _classify_error
+            kind, hint = _classify_error(e)
+            enc = EventEncoder()
+            yield enc.encode(
+                RunErrorEvent(
+                    type=EventType.RUN_ERROR,
+                    message=f"{type(e).__name__}: {e}",
+                    code=kind,
+                    errorKind=kind,
+                    errorHint=hint,
+                    requestId=request_id,
+                )
+            )
+
     return StreamingResponse(
-        event_stream(),
+        safe_event_stream(),
         media_type="text/event-stream",
+        headers={"X-Request-Id": request_id},
     )
 
 
@@ -146,6 +199,7 @@ async def agent_agui(input_data: "RunAgentInput"):
             user_message=user_message,
             case_id=case_id,
             case_ids=case_ids,
+            request_id=str(uuid.uuid4()),
         ):
             yield sse
 
@@ -237,6 +291,29 @@ async def agent_health():
         "sdk_available": engine._mcp_servers is not None,
         "jurisdictions_loaded": list(engine._mcp_servers.keys()) if engine._mcp_servers else [],
     }
+
+
+# ── Agent active workspace 接口 ──
+
+@router.post("/workspace/cases/{case_id}")
+async def mount_agent_workspace_case(case_id: str):
+    """把前端当前选择的 case 复制到固定 Agent 工作目录。
+
+    目录固定为 ~/.taxi/agent_workspace/。每次 mount 都先清空旧内容,避免
+    Agent 看到上一次选择的 case。
+    """
+    mounted = mount_cases([case_id])
+    _, manifest = mounted[0]
+    return {
+        "workspace_path": str(AGENT_WORKSPACE_ROOT),
+        "manifest": manifest,
+    }
+
+
+@router.delete("/workspace")
+async def clear_agent_workspace_api():
+    """清空固定 Agent 工作目录。前端"清空数据"按钮会调用它。"""
+    return {"workspace_path": clear_agent_workspace(), "cleared": True}
 
 
 # ── 示例数据接口 ──

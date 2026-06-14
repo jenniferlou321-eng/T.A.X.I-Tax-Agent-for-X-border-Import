@@ -7,11 +7,17 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class SalesTransaction(BaseModel):
-    """一张销售发票"""
+    """一张销售发票
+
+    支持扩展字段(嘉汉案例的 txn_type/currency/related_party_id/filable/platform_status 等)。
+    Pydantic v2 model_config 允许 extra='allow' 把未知字段当作普通属性保留。
+    """
+    model_config = ConfigDict(extra="allow")
+
     id: str
     txn_date: date
     counterparty: str
@@ -25,7 +31,9 @@ class SalesTransaction(BaseModel):
 
 
 class PurchaseTransaction(BaseModel):
-    """一张采购发票"""
+    """一张采购发票(同 SalesTransaction,允许扩展字段)"""
+    model_config = ConfigDict(extra="allow")
+
     id: str
     txn_date: date
     counterparty: str
