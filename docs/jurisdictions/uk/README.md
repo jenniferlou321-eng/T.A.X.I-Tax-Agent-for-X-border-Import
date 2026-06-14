@@ -60,15 +60,40 @@
 
 | 模块 | 完成度 | 说明 |
 |------|--------|------|
-| HMRC 9-box VAT Adapter | 100% | 与 OpenAPI 规范完全一致 |
+| HMRC 9-box VAT Adapter | 100% | **REST API**,v1.0 - 沙箱 E2E 已测 |
+| HMRC Corporation Tax Adapter | 🟡 计算+适配器完整,API client 走 mock | **HMRC 实际 API 是 XML**（Corporation Tax Online XML API）,非 REST;当前代码用 JSON 占位,需 XML 客户端才能联通真实接口 |
+| HMRC PAYE (RTI) Adapter | 🟡 计算+适配器完整,API client 走 mock | **HMRC 实际 API 是 XML**（Real Time Information online）,非 REST;FPS/EPS/EYU 均为 XML 消息类型 |
+| Apprenticeship Levy 计算 | ✅ 已实现 | 0.5% × 薪资总额 - £15,000 免税额,通过 PAYE RTI EPS 申报（XML 消息） |
+| Self Assessment 申报 | 🟡 适配器完整,仅 mock | 个人税种,ITS A API 走 REST,未对接 |
+| Stamp Duty Land Tax (SDLT) | 🟡 适配器完整,仅 mock | 房产交易税,非企业经营主要税种 |
 | OAuth 2.0 流程 | 100% | Authorization Code Grant + 自动 refresh |
 | 欺诈预防头 | 100% | 11 个 Gov-Client-* / Gov-Vendor-* 头 |
-| 沙盒 E2E 测试 | ✅ 完成 | 2026-06-01 提交 18A1 获 formBundleNumber 321591334754 |
-| 文档与代码一致性 | 100% | 已交叉验证 |
+| 沙盒 E2E 测试 | ✅ 完成 | 2026-06-01 VAT 提交 18A1 获 formBundleNumber 321591334754 |
 | TaxAgent 全 6 阶段管线 | ✅ 已集成 | PRECHECK→PREPARE→CALCULATE→VALIDATE→SUBMIT→TRACK |
-| 单元测试 | < 30% | 待补充 |
-| Self Assessment 申报 | 📋 规划 | SA UTR + ITSA 流程未实现 |
-| Production 切换 | 📋 规划 | 需申请真实 Government Gateway 账户 |
+
+### ⚠️ 重要：CT 和 PAYE 实际是 XML API（不是 REST）
+
+经过 2026-06-13 对 HMRC Developer Hub 的复核：
+
+- **VAT** 是 REST API（`/api/service/vat-api/1.0`） ✅
+- **Corporation Tax** 是 **XML API**（`/api/xml/Corporation Tax Online`），通过 Government Gateway 的 XML 网关通信 ❌ 当前代码错误地使用 REST 路径
+- **PAYE/RTI** 是 **XML API**（`/api/xml/Real Time Information online`），FPS/EPS/EYU 是 XML 消息类型 ❌ 当前代码错误地使用 REST 路径
+- **Business Rates** 实际有 REST API（`/api/service/business-rates-api/2.0`），但**仅用于 VOA 估值查询和上诉**（Check case / Challenge case），**不包含 council 账单**。原文档"无 API"的说法不准确。
+
+要让 CT 和 PAYE 真正联通 HMRC，需要：
+1. 用 `httpx` 改 XML 请求（或库如 `lxml`），而非 JSON
+2. POST 到 Government Gateway 的 XML endpoint（不是 `/company/corporation-tax/returns` 这种 REST 路径）
+3. 处理 GovTalk 协议封装（HMRC XML API 用 GovTalk 消息包装器）
+
+---
+
+## ⚠️ 不在 T.A.X.I. 范围内（明确边界）
+
+| 税种 | 原因 | 处理方式 |
+|------|------|----------|
+| **Withholding Tax (利息/特许权使用费预提税)** | UK 的 outward WHT 通过 CT600 申报(DTA 减免通过 DTTP1/DT-Company 纸面表单),没有独立 API。UK 对股息**从不征收 WHT**（不只是 0%）。Case B 测试 fixture 包含 CN 视角的 WHT 数据(用于跨境场景演示),不构成独立的 UK tax type | 已在 `data/tax_knowledge/uk/withholding_tax.md` 文档化规则;agent 不会把它们作为独立 TaxType 申报 |
+| **Capital Gains Tax / National Insurance** | 已在 `TaxType` 枚举中预留,但仅作占位,无独立申报流程(CGT 嵌入 SA;NIC 嵌入 PAYE) | 后续如需独立能力,建议走 SA/PAYE 扩展 |
+| **Council Tax / Business Rates billing** | 商业房产税的**计费**仍由各地方政府（council）征收;HMRC 也不管辖 | VOA 上诉和估值查询可走 `business-rates-api/2.0`,账单仍需直接对接 council |
 
 ---
 

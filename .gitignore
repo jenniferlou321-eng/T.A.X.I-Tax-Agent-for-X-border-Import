@@ -84,6 +84,7 @@ lerna-debug.log*
 .env.*.local
 .env.testuser
 !.env.example
+agent_provider.local.json
 .tokens/
 *.pem
 *.key

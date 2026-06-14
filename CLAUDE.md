@@ -30,6 +30,7 @@ Currently live: **UK VAT** via HMRC Making Tax Digital API. UK SA / CT / PAYE / 
 │
 ├── README.md                        ← 产品概览
 ├── CLAUDE.md                        ← 你正在读的开发者指南
+├── Case_Roadmap.md                  ← 嘉汉案例驱动的税种实现状态与长期计划
 ├── LICENSE                          ← MIT
 ├── .gitignore
 │
@@ -71,6 +72,7 @@ Currently live: **UK VAT** via HMRC Making Tax Digital API. UK SA / CT / PAYE / 
 | 你想做 | 去哪里 |
 |---|---|
 | 了解产品定位 | [`README.md`](./README.md) |
+| 了解嘉汉案例路线图 / 税种实现状态 | [`Case_Roadmap.md`](./Case_Roadmap.md) |
 | 加一个新国家 | [`docs/architecture/adding-new-jurisdiction.md`](./docs/architecture/adding-new-jurisdiction.md) |
 | 加一个新税种 | [Common Tasks](#common-tasks) |
 | 理解 6 阶段管线 | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
@@ -196,6 +198,18 @@ LLM-facing field names (`vrn`, `period_key`, etc.) are mapped to the internal `t
 - SSE `/api/agent/chat` (HTTP fallback)
 - Session listing: `/api/agent/sessions` (reads SDK's JSONL files)
 - Health: `/api/agent/health`
+
+### HMRC API 真实状态 (2026-06-13 复核)
+
+| 税种 | HMRC 实际 API 格式 | 当前代码状态 | 备注 |
+|------|-------------------|--------------|------|
+| **VAT** | **REST** (`/api/service/vat-api/1.0`) | ✅ JSON client 工作 | 唯一 REST MTD API;沙箱 E2E 已通 |
+| **Corporation Tax** | **XML** (`/api/xml/Corporation Tax Online`) | ❌ 代码用 JSON 假路径 | CT600 通过 GovTalk XML 提交,需 XML client |
+| **PAYE/RTI** | **XML** (`/api/xml/Real Time Information online`) | ❌ 代码用 JSON 假路径 | FPS/EPS/EYU 是 XML 消息类型 |
+| **Business Rates** | **REST** (`/api/service/business-rates-api/2.0`) | 🟡 文档未提及 | 仅 VOA 估值/上诉,不包含 council 账单 |
+| **Withholding Tax** | 无独立 API (走 CT600 + DTTP1/DT-Company) | 🟡 文档化在 `data/tax_knowledge/uk/withholding_tax.md` | UK 从不预扣股息税 |
+
+要让 CT/PAYE 真正联通 HMRC,需要把 `hmrc_service.py` 中的 `httpx` JSON 调用改为 XML 客户端,POST 到 Government Gateway XML endpoint,并处理 GovTalk 消息包装器。详见 `docs/architecture/govtalk_client.md` (含完整代码骨架、envelope 示例、CT600 body builder 示例、轮询流程)。
 
 ### SDK 调研 Subagent(项目级)
 - 定义:`.claude/agents/claude-sdk-docs-researcher.md` — 通过 `Agent` 工具用 `subagent_type="general-purpose"` 派发
