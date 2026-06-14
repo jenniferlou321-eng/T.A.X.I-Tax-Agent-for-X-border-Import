@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 //
@@ -12,8 +11,10 @@ import tailwindcss from '@tailwindcss/vite'
 //   `Upgrade` header is preserved (`ws: true`).
 // - For production (`vite build` → `vite preview`) the same defaults are
 //   applied so a one-line `npm run preview -- --port 9000 --host` also works.
+// - Tailwind v3 uses the PostCSS pipeline (postcss.config.js) — do NOT import
+//   @tailwindcss/vite here (that's Tailwind v4 only).
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   server: {
     host: true,
     port: 9000,
