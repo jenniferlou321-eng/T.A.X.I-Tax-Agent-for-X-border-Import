@@ -45,7 +45,6 @@ class CT600Mapping:
 
     def to_line_items(self) -> list[dict]:
         """转换为 LineItem 列表"""
-        from backend.models.tax_data import LineItem
         return [
             {"category": k, "amount": str(v), "currency": "GBP"}
             for k, v in self.line_items.items()

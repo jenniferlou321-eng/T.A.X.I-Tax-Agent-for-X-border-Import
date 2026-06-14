@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional
 
 
 # ── 资本减免参数 (FY2024/25) ──

@@ -1,7 +1,7 @@
 """UK VAT Validator — 提交前合规性校验"""
 
 from decimal import Decimal
-from backend.models.tax_data import TaxType, TaxData
+from backend.models.tax_data import TaxData
 from backend.models.results import ValidationReport, ValidationError
 
 

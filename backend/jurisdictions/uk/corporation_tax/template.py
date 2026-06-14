@@ -287,5 +287,53 @@ CT600_FULL_TEMPLATE = DataTemplate(
                 ),
             ],
         ),
+
+        # ── CT600 Supplementary: WHT Disclosures ──
+        # 当 UK 公司向境外关联方支付利息/特许权/股息,
+        # 在 CT600 supplementary 披露已扣的预提税。
+        # 平台会自动按 DTA 计算并嵌入到 GovTalk XML。
+        TemplateSection(
+            title="WHT Supplementary Disclosures",
+            description=(
+                "Cross-border WHT: interest, royalties, dividends paid to "
+                "non-UK recipients. Auto-calculated via DTA rates; auto-embedded "
+                "in CT600 GovTalk XML as supplementary pages."
+            ),
+            is_optional=True,
+            fields=[
+                TemplateField(
+                    key="interest_amount", label="Interest Paid to Non-UK Recipients",
+                    field_type=FieldType.NUMBER, required=False,
+                    hint="Gross interest paid. WHT computed via DTA treaty rate.",
+                ),
+                TemplateField(
+                    key="royalty_amount", label="Royalties Paid to Non-UK Recipients",
+                    field_type=FieldType.NUMBER, required=False,
+                    hint="Gross royalties paid. WHT computed via DTA treaty rate.",
+                ),
+                TemplateField(
+                    key="dividend_amount", label="Dividends Paid to Non-UK Shareholders",
+                    field_type=FieldType.NUMBER, required=False,
+                    hint="Gross dividends. UK generally does not levy dividend WHT (0% for ≥25% holding under DTA).",
+                ),
+                TemplateField(
+                    key="recipient_country", label="Recipient Country (ISO-2)",
+                    field_type=FieldType.TEXT, required=False,
+                    example="CN",
+                    hint="ISO-3166-1 alpha-2 code (e.g. CN, HK, US, DE, FR).",
+                ),
+                TemplateField(
+                    key="recipient_name", label="Recipient Name",
+                    field_type=FieldType.TEXT, required=False,
+                    hint="For 100% group companies: name of overseas parent/sister.",
+                ),
+                TemplateField(
+                    key="ownership_pct", label="Ownership Percentage (dividends only)",
+                    field_type=FieldType.NUMBER, required=False,
+                    example="100",
+                    hint="Used for tiered dividend WHT rates under DTA.",
+                ),
+            ],
+        ),
     ],
 )

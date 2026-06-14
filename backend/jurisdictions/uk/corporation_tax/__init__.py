@@ -62,7 +62,12 @@ class UKCTAdapter:
         return self._tools
 
     def to_filing_format(self, tax_type: TaxType, data: TaxData) -> FilingPayload:
-        """转换为 HMRC CT JSON 格式 (扩展版，含资本减免、损失、R&D 详细字段)"""
+        """转换为 HMRC CT JSON 格式 (扩展版，含资本减免、损失、R&D 详细字段)
+
+        此外,如果 line_items 包含利息/特许权使用费/股息支付给境外关联方,
+        自动计算 WHT 并附加到 body 的 `wht_supplementary` 字段,
+        供 hmrc_service.build_ct600_body() 在 GovTalk XML 中嵌入 supplementary 页。
+        """
         line_map = {li.category: float(li.amount) for li in data.line_items}
         num_assoc = int(data.metadata.get("num_associated_companies", 1))
 
@@ -122,12 +127,136 @@ class UKCTAdapter:
                 "amountPayable": line_map.get("amount_payable", 0),
             },
         }
+
+        # ── WHT supplementary ──
+        # 自动检测: 如有跨境利息/特许权/股息支付,计算 WHT 并附加到 body
+        wht_entries = self._build_wht_entries(data, line_map)
+        if wht_entries:
+            body["wht_supplementary"] = wht_entries
+
         return FilingPayload(
             tax_type=TaxType.CORPORATION_TAX,
             period=data.period,
             taxpayer=data.taxpayer,
             body=body,
         )
+
+    def _build_wht_entries(self, data: TaxData, line_map: dict) -> list[dict]:
+        """从 TaxData 构建 WHT supplementary entries。
+
+        触发条件 (任一):
+        - line_items 包含 "interest_amount" / "royalty_amount" / "dividend_amount"
+        - 或 metadata.wht_payments 是 list of {income_type, gross, recipient_country, ...}
+
+        Returns:
+            list of WHT entry dicts (空 list 表示无需 WHT supplementary)
+        """
+        # 来源 1: metadata 中的结构化 WHT 付款列表
+        wht_payments = data.metadata.get("wht_payments", [])
+        if isinstance(wht_payments, list) and wht_payments:
+            return self._entries_from_metadata(wht_payments)
+
+        # 来源 2: line_items 中的汇总金额
+        entries: list[dict] = []
+        recipient_country = data.metadata.get("recipient_country", "CN")
+        recipient_name = data.metadata.get("recipient_name", "")
+        ownership_pct = float(data.metadata.get("ownership_pct", 100))
+        period_end = data.period.end_date.isoformat() if data.period else ""
+
+        from .withholding_tax_adapter import (
+            compute_wht_interest,
+            compute_wht_royalty,
+            compute_wht_dividend,
+        )
+
+        interest = line_map.get("interest_amount", 0)
+        if interest and interest > 0:
+            rate, wht, treaty = compute_wht_interest(interest, recipient_country)
+            if wht > 0:
+                entries.append({
+                    "income_type": "interest",
+                    "gross_amount": round(interest, 2),
+                    "wht_amount": round(wht, 2),
+                    "rate": str(rate),
+                    "treaty_rate": str(treaty),
+                    "recipient_country": recipient_country,
+                    "recipient_name": recipient_name,
+                    "date_paid": period_end,
+                })
+
+        royalty = line_map.get("royalty_amount", 0)
+        if royalty and royalty > 0:
+            rate, wht, treaty = compute_wht_royalty(royalty, recipient_country)
+            if wht > 0:
+                entries.append({
+                    "income_type": "royalty",
+                    "gross_amount": round(royalty, 2),
+                    "wht_amount": round(wht, 2),
+                    "rate": str(rate),
+                    "treaty_rate": str(treaty),
+                    "recipient_country": recipient_country,
+                    "recipient_name": recipient_name,
+                    "date_paid": period_end,
+                })
+
+        dividend = line_map.get("dividend_amount", 0)
+        if dividend and dividend > 0:
+            rate, wht, treaty = compute_wht_dividend(
+                dividend, recipient_country, ownership_pct
+            )
+            # 股息 0% 时不申报 supplementary
+            if wht > 0:
+                entries.append({
+                    "income_type": "dividend",
+                    "gross_amount": round(dividend, 2),
+                    "wht_amount": round(wht, 2),
+                    "rate": str(rate),
+                    "treaty_rate": str(treaty),
+                    "recipient_country": recipient_country,
+                    "recipient_name": recipient_name,
+                    "date_paid": period_end,
+                })
+
+        return entries
+
+    def _entries_from_metadata(self, wht_payments: list) -> list[dict]:
+        """从 metadata.wht_payments (结构化付款列表) 转换为 entries。"""
+        from .withholding_tax_adapter import (
+            compute_wht_interest,
+            compute_wht_royalty,
+            compute_wht_dividend,
+        )
+
+        entries: list[dict] = []
+        for p in wht_payments:
+            income_type = p.get("income_type", "")
+            gross = float(p.get("gross_amount", 0) or 0)
+            country = p.get("recipient_country", "CN")
+            ownership = float(p.get("ownership_pct", 100))
+            if gross <= 0 or not income_type:
+                continue
+
+            if income_type == "interest":
+                rate, wht, treaty = compute_wht_interest(gross, country)
+            elif income_type == "royalty":
+                rate, wht, treaty = compute_wht_royalty(gross, country)
+            elif income_type == "dividend":
+                rate, wht, treaty = compute_wht_dividend(gross, country, ownership)
+            else:
+                continue
+
+            entries.append({
+                "income_type": income_type,
+                "gross_amount": round(gross, 2),
+                "wht_amount": round(wht, 2),
+                "rate": str(rate),
+                "treaty_rate": str(treaty),
+                "recipient_country": country,
+                "recipient_name": p.get("recipient_name", ""),
+                "date_paid": p.get("date_paid", ""),
+            })
+
+        return entries
 
     def import_financials(
         self,

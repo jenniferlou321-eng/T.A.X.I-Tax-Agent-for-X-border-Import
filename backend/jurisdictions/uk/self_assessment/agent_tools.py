@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import date
+from decimal import Decimal
 from typing import Optional
 
 from backend.models.agent_tools import AgentToolSet
@@ -10,18 +12,32 @@ from backend.models.tax_data import (
     TaxData, TaxpayerInfo, FiscalPeriod, TaxType, LineItem, PeriodType,
 )
 from backend.channels.oauth import OAuth2Manager
+from backend.channels.fraud_headers import FraudPreventionHeaders
 from backend.agent.business_analyzer import analyze_business_data as _analyze_business_data
 
-
-def _tool_error(msg: str, detail: str = "") -> dict:
-    payload = {"success": False, "error": msg}
-    if detail:
-        payload["detail"] = detail
-    return {"content": [{"type": "text", "text": json.dumps(payload)}], "is_error": True}
+from ..config import hmrc_config
+from .._hmrc_base import hmrc_mode, tool_error, tool_ok
+from .hmrc_service import HMRCSAService
 
 
-def _tool_ok(data: dict) -> dict:
-    return {"content": [{"type": "text", "text": json.dumps(data, indent=2)}]}
+# ── Helper: Build HMRC service ──
+
+def _build_hmrc_service(nino: str) -> HMRCSAService:
+    """Create an HMRC SA service instance for the given NINO."""
+    oauth = OAuth2Manager(
+        client_id=hmrc_config.sa_oauth.client_id,
+        client_secret=hmrc_config.sa_oauth.client_secret,
+        authorize_url=hmrc_config.sa_oauth.authorize_url,
+        token_url=hmrc_config.sa_oauth.token_url,
+        scope=hmrc_config.sa_oauth.scope,
+        redirect_uri=hmrc_config.sa_oauth.redirect_uri,
+        token_store_path=f"./.tokens/{nino}.json",
+    )
+    return HMRCSAService(
+        base_url=hmrc_config.base_url,
+        oauth=oauth,
+        fraud_headers=FraudPreventionHeaders(),
+    )
 
 
 class UKSAAgentToolSet(AgentToolSet):
@@ -32,30 +48,50 @@ class UKSAAgentToolSet(AgentToolSet):
 
     async def get_obligations(self, taxpayer_id: str, status_filter: str = "") -> dict:
         """查询 HMRC ITSA 申报义务"""
-        from backend.jurisdictions.uk.config import hmrc_config
         nino = taxpayer_id
         if not nino:
-            return _tool_error("NINO is required")
-        # 模拟返回（生产环境调用真实 API）
-        return _tool_ok({
-            "success": True,
-            "obligations": [
+            return tool_error("NINO is required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "obligations": [
+                    {
+                        "tax_year": "2023-24",
+                        "start": "2023-04-06",
+                        "end": "2024-04-05",
+                        "due": "2025-01-31",
+                        "status": "O",
+                    },
+                    {
+                        "tax_year": "2022-23",
+                        "start": "2022-04-06",
+                        "end": "2023-04-05",
+                        "due": "2024-01-31",
+                        "status": "F",
+                    },
+                ],
+            })
+
+        try:
+            service = _build_hmrc_service(nino)
+            obligations = await service.get_obligations(nino=nino)
+            result = [
                 {
-                    "tax_year": "2023-24",
-                    "start": "2023-04-06",
-                    "end": "2024-04-05",
-                    "due": "2025-01-31",
-                    "status": "O",
-                },
-                {
-                    "tax_year": "2022-23",
-                    "start": "2022-04-06",
-                    "end": "2023-04-05",
-                    "due": "2024-01-31",
-                    "status": "F",
-                },
-            ],
-        })
+                    "tax_year": ob.tax_year,
+                    "start": ob.start.isoformat(),
+                    "end": ob.end.isoformat(),
+                    "due": ob.due.isoformat(),
+                    "status": ob.status,
+                }
+                for ob in obligations
+            ]
+            return tool_ok({"success": True, "obligations": result})
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     async def calculate_return(self, line_items_json: str, period_info: Optional[dict] = None) -> dict:
         """计算 Self Assessment 应纳税额"""
@@ -64,7 +100,7 @@ class UKSAAgentToolSet(AgentToolSet):
             line_items = [
                 LineItem(
                     category=li["category"],
-                    amount=__import__("decimal").Decimal(str(li["amount"])),
+                    amount=Decimal(str(li["amount"])),
                     currency=li.get("currency", "GBP"),
                 )
                 for li in raw_items
@@ -75,8 +111,8 @@ class UKSAAgentToolSet(AgentToolSet):
                     year=2024,
                     period_type=PeriodType.ANNUAL,
                     period_key=period_info.get("period_key", "2023-24") if period_info else "2023-24",
-                    start_date=__import__("datetime").date(2023, 4, 6),
-                    end_date=__import__("datetime").date(2024, 4, 5),
+                    start_date=date(2023, 4, 6),
+                    end_date=date(2024, 4, 5),
                 ),
                 taxpayer=TaxpayerInfo(
                     name="AgentCalc",
@@ -89,7 +125,7 @@ class UKSAAgentToolSet(AgentToolSet):
             calc = calculate_self_assessment(data)
             box_map = {b.category: float(b.amount) for b in calc.breakdown}
 
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "total_income": box_map.get("total_income", 0),
                 "personal_allowance": box_map.get("personal_allowance", 0),
@@ -101,7 +137,7 @@ class UKSAAgentToolSet(AgentToolSet):
                 "balancing_payment": box_map.get("balancing_payment", 0),
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     async def validate_return(self, return_data: dict) -> dict:
         """校验 Self Assessment 数据"""
@@ -117,7 +153,7 @@ class UKSAAgentToolSet(AgentToolSet):
                 ):
                     line_items.append(LineItem(
                         category=key,
-                        amount=__import__("decimal").Decimal(str(val)) if val is not None else 0,
+                        amount=Decimal(str(val)) if val is not None else 0,
                         currency="GBP",
                     ))
             data = TaxData(
@@ -126,8 +162,8 @@ class UKSAAgentToolSet(AgentToolSet):
                     year=2024,
                     period_type=PeriodType.ANNUAL,
                     period_key=return_data.get("tax_year", "2023-24"),
-                    start_date=__import__("datetime").date(2023, 4, 6),
-                    end_date=__import__("datetime").date(2024, 4, 5),
+                    start_date=date(2023, 4, 6),
+                    end_date=date(2024, 4, 5),
                 ),
                 taxpayer=TaxpayerInfo(
                     name="AgentVal",
@@ -137,48 +173,89 @@ class UKSAAgentToolSet(AgentToolSet):
                 line_items=line_items,
             )
             report = validate_self_assessment(data)
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "is_valid": report.is_valid,
                 "errors": [{"field": e.field, "message": e.message} for e in report.errors],
                 "warnings": [{"field": w.field, "message": w.message} for w in report.warnings],
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     async def submit_return(self, taxpayer_id: str, period_key: str, return_data: dict) -> dict:
         """提交 Self Assessment 至 HMRC"""
         nino = taxpayer_id
         if not nino or not period_key:
-            return _tool_error("NINO and tax_year (period_key) are required")
-        # 模拟提交
-        return _tool_ok({
-            "success": True,
-            "submission_id": f"SA-{nino}-{period_key}-001",
-            "processing_date": "2025-01-15T10:00:00Z",
-            "tax_year": period_key,
-            "message": "Self Assessment submitted to HMRC (simulated)",
-        })
+            return tool_error("NINO and tax_year (period_key) are required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "submission_id": f"SA-{nino}-{period_key}-001",
+                "processing_date": "2025-01-15T10:00:00Z",
+                "tax_year": period_key,
+                "message": "Self Assessment submitted to HMRC (mock mode — not filed). Set HMRC_MODE=live to file a real return.",
+            })
+
+        try:
+            service = _build_hmrc_service(nino)
+            receipt = await service.submit_final_declaration(
+                nino=nino,
+                tax_year=period_key,
+                body=return_data,
+            )
+            return tool_ok({
+                "success": True,
+                "mode": "live",
+                "submission_id": receipt.get("transactionReference", receipt.get("id", "")),
+                "processing_date": receipt.get("processingDate", ""),
+                "tax_year": period_key,
+                "raw_response": receipt,
+            })
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     async def get_return(self, taxpayer_id: str, period_key: str) -> dict:
         """查询已提交的 Self Assessment"""
         nino = taxpayer_id
         if not nino or not period_key:
-            return _tool_error("NINO and tax_year are required")
-        return _tool_ok({
-            "success": True,
-            "nino": nino,
-            "tax_year": period_key,
-            "message": "Submitted SA return data (simulated)",
-        })
+            return tool_error("NINO and tax_year are required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "nino": nino,
+                "tax_year": period_key,
+                "message": "Submitted SA return data (mock mode — no real return on file with HMRC).",
+            })
+
+        try:
+            service = _build_hmrc_service(nino)
+            declaration = await service.get_final_declaration(
+                nino=nino,
+                tax_year=period_key,
+            )
+            return tool_ok({
+                "success": True,
+                "nino": nino,
+                "tax_year": period_key,
+                "declaration": declaration,
+            })
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     async def analyze_business_data(self, company_data_json: str) -> dict:
         """SA 不直接分析原始业务数据，但可复用通用分析器"""
-        # 复用 UK VAT 的业务分析器
         result = _analyze_business_data(company_data_json)
         if result.get("success"):
-            return _tool_ok(result)
-        return _tool_error(result.get("error", "Analysis failed"))
+            return tool_ok(result)
+        return tool_error(result.get("error", "Analysis failed"))
 
     def get_tool_metadata(self) -> list[dict]:
         return [

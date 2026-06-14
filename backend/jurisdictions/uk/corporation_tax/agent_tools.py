@@ -25,14 +25,32 @@ from backend.models.agent_tools import AgentToolSet
 from backend.models.tax_data import (
     TaxData, TaxpayerInfo, FiscalPeriod, TaxType, LineItem, PeriodType,
 )
+from backend.channels.oauth import OAuth2Manager
+from backend.channels.fraud_headers import FraudPreventionHeaders
+
+from ..config import hmrc_config
+from .._hmrc_base import hmrc_mode, tool_error, tool_ok
+from .hmrc_service import HMRCCTService
 
 
-def _tool_error(msg: str) -> dict:
-    return {"content": [{"type": "text", "text": json.dumps({"success": False, "error": msg})}], "is_error": True}
+# ── Helper: Build HMRC service ──
 
-
-def _tool_ok(data: dict) -> dict:
-    return {"content": [{"type": "text", "text": json.dumps(data, indent=2)}]}
+def _build_hmrc_service(ctref: str) -> HMRCCTService:
+    """Create an HMRC CT service instance for the given CTREF."""
+    oauth = OAuth2Manager(
+        client_id=hmrc_config.ct_oauth.client_id,
+        client_secret=hmrc_config.ct_oauth.client_secret,
+        authorize_url=hmrc_config.ct_oauth.authorize_url,
+        token_url=hmrc_config.ct_oauth.token_url,
+        scope=hmrc_config.ct_oauth.scope,
+        redirect_uri=hmrc_config.ct_oauth.redirect_uri,
+        token_store_path=f"./.tokens/{ctref}.json",
+    )
+    return HMRCCTService(
+        base_url=hmrc_config.base_url,
+        oauth=oauth,
+        fraud_headers=FraudPreventionHeaders(),
+    )
 
 
 class UKCTAgentToolSet(AgentToolSet):
@@ -46,26 +64,52 @@ class UKCTAgentToolSet(AgentToolSet):
     async def get_obligations(self, taxpayer_id: str, status_filter: str = "") -> dict:
         ctref = taxpayer_id
         if not ctref:
-            return _tool_error("CTREF is required")
-        return _tool_ok({
-            "success": True,
-            "obligations": [
+            return tool_error("CTREF is required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "obligations": [
+                    {
+                        "period_key": "FY2024",
+                        "start": "2024-04-01",
+                        "end": "2025-03-31",
+                        "due": "2026-01-01",
+                        "status": "O",
+                    },
+                    {
+                        "period_key": "FY2023",
+                        "start": "2023-04-01",
+                        "end": "2024-03-31",
+                        "due": "2025-01-01",
+                        "status": "F",
+                    },
+                ],
+            })
+
+        try:
+            service = _build_hmrc_service(ctref)
+            obligations = await service.get_obligations(
+                ctref=ctref,
+                status=status_filter or None,
+            )
+            result = [
                 {
-                    "period_key": "FY2024",
-                    "start": "2024-04-01",
-                    "end": "2025-03-31",
-                    "due": "2026-01-01",
-                    "status": "O",
-                },
-                {
-                    "period_key": "FY2023",
-                    "start": "2023-04-01",
-                    "end": "2024-03-31",
-                    "due": "2025-01-01",
-                    "status": "F",
-                },
-            ],
-        })
+                    "period_key": ob.period_key,
+                    "start": ob.start.isoformat(),
+                    "end": ob.end.isoformat(),
+                    "due": ob.due.isoformat(),
+                    "status": ob.status,
+                    "received": ob.received.isoformat() if ob.received else None,
+                }
+                for ob in obligations
+            ]
+            return tool_ok({"success": True, "obligations": result})
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     # ── 计算 ──
 
@@ -74,10 +118,7 @@ class UKCTAgentToolSet(AgentToolSet):
         try:
             from .calculator import calculate_corporation_tax
             from .associated import compute_marginal_relief
-            from .allowances import (
-                calculate_capital_allowances, apply_loss_relief, calculate_rd_relief,
-                calculate_group_relief_claim,
-            )
+            from .allowances import apply_loss_relief
 
             raw_items = json.loads(line_items_json)
             line_items = [
@@ -125,7 +166,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 ct_chargeable = box_map.get("corporation_tax_chargeable", 0)
                 effective_lower_upper = {}
 
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "taxable_total_profits": box_map.get("taxable_total_profits", 0),
                 "ct_rate_applied": box_map.get("ct_rate_applied", 0),
@@ -137,7 +178,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 "warnings": calc.warnings,
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 资本减免详细计算 ──
 
@@ -170,7 +211,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 disposals_proceeds=Decimal(str(args.get("disposals_proceeds", 0))),
                 disposals_pool=args.get("disposals_pool", "main"),
             )
-            return _tool_ok({"success": True, **{
+            return tool_ok({"success": True, **{
                 k: float(v) for k, v in [
                     ("aia_allowance", result.aia_allowance),
                     ("fya_allowance", result.fya_allowance),
@@ -182,7 +223,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 ]
             }})
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 关联企业边际减免 ──
 
@@ -197,7 +238,7 @@ class UKCTAgentToolSet(AgentToolSet):
 
             effective_rate = (ct_tax / profits).quantize(Decimal("0.0001")) if profits > 0 else Decimal("0")
 
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "profits_chargeable": float(profits),
                 "num_associated_companies": num_assoc,
@@ -207,7 +248,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 "effective_rate": float(effective_rate),
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── Group Relief ──
 
@@ -222,7 +263,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 surrendering_relief=Decimal(str(args.get("surrendering_relief", 0))),
                 already_claimed_by_claimant=Decimal(str(args.get("already_claimed", 0))),
             )
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 **{
                     k: float(v) for k, v in [
@@ -234,7 +275,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 }
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── Loss Relief ──
 
@@ -248,7 +289,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 losses_brought_forward=Decimal(str(args.get("losses_brought_forward", 0))),
                 carry_back=bool(args.get("carry_back", True)),
             )
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 **{
                     k: float(v) for k, v in [
@@ -261,7 +302,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 }
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── R&D ──
 
@@ -273,7 +314,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 qualifying_expenditure=Decimal(str(args.get("qualifying_expenditure", 0))),
                 is_sme=bool(args.get("is_sme", True)),
             )
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "is_sme": result.is_sme,
                 "qualifying_expenditure": float(result.qualifying_expenditure),
@@ -281,7 +322,7 @@ class UKCTAgentToolSet(AgentToolSet):
                 "enhanced_deduction_rate": float(result.rd_enhanced_deduction_rate),
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 税务优化建议 ──
 
@@ -345,17 +386,17 @@ class UKCTAgentToolSet(AgentToolSet):
                 suggestions.append({
                     "category": "marginal_relief",
                     "title": "考虑 timing of income/expenses",
-                    "description": f"利润在边际区间内。可考虑将收入延后到下个会计期间，或加速扣除（如奖金）。",
+                    "description": "利润在边际区间内。可考虑将收入延后到下个会计期间，或加速扣除（如奖金）。",
                     "potential_saving": "Up to 6% of profits",
                 })
 
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "suggestions": suggestions,
                 "num_suggestions": len(suggestions),
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 校验 ──
 
@@ -395,45 +436,86 @@ class UKCTAgentToolSet(AgentToolSet):
                 metadata={"num_associated_companies": return_data.get("num_associated_companies", 1)},
             )
             report = validate_corporation_tax(data)
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "is_valid": report.is_valid,
                 "errors": [{"field": e.field, "message": e.message} for e in report.errors],
                 "warnings": [{"field": w.field, "message": w.message} for w in report.warnings],
             })
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 提交 ──
 
     async def submit_return(self, taxpayer_id: str, period_key: str, return_data: dict) -> dict:
         ctref = taxpayer_id
         if not ctref or not period_key:
-            return _tool_error("CTREF and accounting period are required")
-        return _tool_ok({
-            "success": True,
-            "submission_id": f"CT-{ctref}-{period_key}-001",
-            "processing_date": "2025-12-15T10:00:00Z",
-            "message": "Corporation Tax return submitted (simulated)",
-        })
+            return tool_error("CTREF and accounting period are required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "submission_id": f"CT-{ctref}-{period_key}-001",
+                "processing_date": "2025-12-15T10:00:00Z",
+                "form_bundle_number": f"MOCK-CT-{period_key}-{ctref[:4]}",
+                "charge_ref_number": f"CHG-MOCK-CT-{period_key}",
+                "message": "Corporation Tax return submitted (mock mode — not filed with HMRC). Set HMRC_MODE=live to file a real return.",
+            })
+
+        try:
+            service = _build_hmrc_service(ctref)
+            receipt = await service.submit_return(ctref=ctref, body=return_data)
+            return tool_ok({
+                "success": True,
+                "mode": "live",
+                "submission_id": receipt.get("submissionId", ""),
+                "processing_date": receipt.get("processingDate", ""),
+                "form_bundle_number": receipt.get("formBundleNumber", ""),
+                "charge_ref_number": receipt.get("chargeRefNumber", ""),
+            })
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     # ── 查询 ──
 
     async def get_return(self, taxpayer_id: str, period_key: str) -> dict:
         ctref = taxpayer_id
         if not ctref or not period_key:
-            return _tool_error("CTREF and period_key are required")
-        return _tool_ok({
-            "success": True,
-            "ctref": ctref,
-            "period_key": period_key,
-            "message": "Submitted CT return data (simulated)",
-        })
+            return tool_error("CTREF and period_key are required")
+
+        if hmrc_mode() != "live":
+            return tool_ok({
+                "success": True,
+                "mode": "mock",
+                "ctref": ctref,
+                "period_key": period_key,
+                "message": "Submitted CT return data (mock mode — no real return on file with HMRC).",
+            })
+
+        try:
+            service = _build_hmrc_service(ctref)
+            ret = await service.get_return(ctref=ctref, submission_id=period_key)
+            return tool_ok({
+                "success": True,
+                "submission_id": ret.submission_id,
+                "processing_date": ret.processing_date,
+                "form_bundle_number": ret.form_bundle_number,
+                "charge_ref_number": ret.charge_ref_number,
+                "period_start": ret.period_start,
+                "period_end": ret.period_end,
+            })
+        except PermissionError as e:
+            return tool_error("HMRC authentication required", str(e))
+        except Exception as e:
+            return tool_error(str(e))
 
     # ── 元数据 ──
 
     async def analyze_business_data(self, company_data_json: str) -> dict:
-        return _tool_error("For CT, use the financial statements to fill CT600 fields. The data analyzer is for VAT.")
+        return tool_error("For CT, use the financial statements to fill CT600 fields. The data analyzer is for VAT.")
 
     def get_tool_metadata(self) -> list[dict]:
         return [

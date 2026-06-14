@@ -20,7 +20,7 @@
 
 from decimal import Decimal, ROUND_HALF_UP
 from backend.models.tax_data import TaxData
-from backend.models.results import CalculationResult, BreakdownItem, DeductionItem
+from backend.models.results import CalculationResult, BreakdownItem
 
 
 # Residential bands (rUK, 2024/25)

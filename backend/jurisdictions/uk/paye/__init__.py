@@ -53,17 +53,41 @@ class UKPAYEAdapter:
 
     def to_filing_format(self, tax_type: TaxType, data: TaxData) -> FilingPayload:
         line_map = {li.category: float(li.amount) for li in data.line_items}
-        body = {
-            "empref": data.taxpayer.tax_id,
-            "paymentDate": data.period.end_date.isoformat(),
-            "employees": line_map.get("number_of_employees", 0),
-            "totals": {
-                "grossPay": line_map.get("total_paye_income", 0),
-                "taxDeducted": line_map.get("total_tax_deducted", 0),
-                "employeeNics": line_map.get("total_employees_nics", 0),
-                "employerNics": line_map.get("total_employer_nics", 0),
-            },
-        }
+        submission_type = (data.metadata.get("submission_type") or "fps").lower()
+
+        if submission_type == "eps":
+            # EPS (Employer Payment Summary) — 包含学徒税、雇佣津贴、CIS 等调整项
+            period_levy_allowance = float(line_map.get("levy_allowance", 1250))
+            body = {
+                "empref": data.taxpayer.tax_id,
+                "periodStart": data.period.start_date.isoformat() if data.period.start_date else None,
+                "periodEnd": data.period.end_date.isoformat() if data.period.end_date else None,
+                "apprenticeshipLevy": {
+                    "totalPayBill": line_map.get("total_pay_bill", 0),
+                    "levyAllowance": period_levy_allowance,
+                    "levyDueYTD": line_map.get("apprenticeship_levy_payable", 0),
+                },
+                "employmentAllowance": {
+                    "amountClaimed": line_map.get("employment_allowance_claimed", 0),
+                },
+                "statutoryPayments": {
+                    "statutoryMaternityPay": line_map.get("statutory_maternity_pay", 0),
+                    "statutorySickPay": line_map.get("statutory_sick_pay", 0),
+                },
+            }
+        else:
+            # FPS (Full Payment Submission) — 每个工资周期的标准申报
+            body = {
+                "empref": data.taxpayer.tax_id,
+                "paymentDate": data.period.end_date.isoformat(),
+                "employees": line_map.get("number_of_employees", 0),
+                "totals": {
+                    "grossPay": line_map.get("total_paye_income", 0),
+                    "taxDeducted": line_map.get("total_tax_deducted", 0),
+                    "employeeNics": line_map.get("total_employees_nics", 0),
+                    "employerNics": line_map.get("total_employer_nics", 0),
+                },
+            }
         return FilingPayload(
             tax_type=TaxType.PAYE,
             period=data.period,

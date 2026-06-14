@@ -11,11 +11,10 @@ v0 修订：加 `mode` 形参。
   同时调 reconcile 生成 discrepancy_report
 """
 from decimal import Decimal
-from typing import Optional
 
 from backend.models.tax_data import TaxData
 from backend.models.results import CalculationResult, BreakdownItem
-from backend.erp.reconcile import compute_taxi_nine_box, reconcile, ReconciliationDelta
+from backend.erp.reconcile import compute_taxi_nine_box, reconcile
 from backend.models.erp_models import ERPNineBox
 
 

@@ -8,7 +8,7 @@ from datetime import date
 
 from backend.models.template import (
     DataTemplate, TemplateSection, TemplateField,
-    FieldType, FieldValidation,
+    FieldType,
 )
 from backend.models.tax_data import TaxType
 
@@ -87,6 +87,16 @@ PAYE_TEMPLATE = DataTemplate(
                     key="employment_allowance_claimed", label="Employment Allowance",
                     field_type=FieldType.NUMBER, required=False,
                     hint="Up to £5,000 per year for eligible employers",
+                ),
+                TemplateField(
+                    key="total_pay_bill", label="Total Pay Bill (for levy calculation)",
+                    field_type=FieldType.NUMBER, required=False,
+                    hint="Sum of all employee earnings subject to Class 1 secondary NICs.",
+                ),
+                TemplateField(
+                    key="apprenticeship_levy_payable", label="Apprenticeship Levy Payable",
+                    field_type=FieldType.NUMBER, required=False,
+                    hint="0.5% of total pay bill minus £15,000 annual allowance. Report via EPS.",
                 ),
             ],
         ),

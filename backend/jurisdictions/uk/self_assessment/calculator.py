@@ -14,9 +14,8 @@
 """
 
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any
 
-from backend.models.tax_data import TaxData, TaxType
+from backend.models.tax_data import TaxData
 from backend.models.results import CalculationResult, BreakdownItem, DeductionItem
 
 
@@ -102,7 +101,7 @@ def calculate_self_assessment(data: TaxData) -> CalculationResult:
     # ── 6. 扣除项 ──
     pension = _dec(line_map.get("pension_contributions"))
     gift_aid = _dec(line_map.get("gift_aid"))
-    other_reliefs = _dec(line_map.get("other_reliefs"))
+    _dec(line_map.get("other_reliefs"))
 
     taxable_income_after_reliefs = max(
         Decimal("0"),

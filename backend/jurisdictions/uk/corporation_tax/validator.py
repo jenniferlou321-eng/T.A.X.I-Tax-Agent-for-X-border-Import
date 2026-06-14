@@ -1,7 +1,5 @@
 """UK Corporation Tax 数据校验器"""
 
-from decimal import Decimal
-from datetime import date
 from backend.models.tax_data import TaxData
 from backend.models.results import ValidationReport, ValidationError
 

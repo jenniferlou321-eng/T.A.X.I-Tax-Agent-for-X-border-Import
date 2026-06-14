@@ -57,12 +57,12 @@ class UKVATAgentToolSet(AgentToolSet):
         """Query HMRC for VAT filing obligations."""
         vrn = taxpayer_id
         if not vrn:
-            return _tool_error("VRN (taxpayer_id) is required")
+            return tool_error("VRN (taxpayer_id) is required")
 
         # 默认使用模拟模式（除非显式启用 HMRC_MODE=live）
         # 这样 Kimi/ANTHROPIC 凭证不会被误用为 HMRC 凭证
         if hmrc_mode() != "live":
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "mode": "mock",
                 "obligations": [
@@ -101,11 +101,11 @@ class UKVATAgentToolSet(AgentToolSet):
                 }
                 for ob in obligations
             ]
-            return _tool_ok({"success": True, "obligations": result})
+            return tool_ok({"success": True, "obligations": result})
         except PermissionError as e:
-            return _tool_error("HMRC authentication required", str(e))
+            return tool_error("HMRC authentication required", str(e))
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 计算类工具 ──
 
@@ -114,7 +114,7 @@ class UKVATAgentToolSet(AgentToolSet):
         try:
             raw_items = json.loads(line_items_json)
             if not isinstance(raw_items, list):
-                return _tool_error("line_items_json must be a JSON array")
+                return tool_error("line_items_json must be a JSON array")
 
             line_items = [
                 LineItem(
@@ -152,9 +152,9 @@ class UKVATAgentToolSet(AgentToolSet):
                 "box5_net_vat_due": box_map.get("net_vat_due", "0"),
                 "warnings": calc.warnings,
             }
-            return _tool_ok(result)
+            return tool_ok(result)
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     async def validate_return(self, return_data: dict) -> dict:
         """Validate UK VAT Return 9-box values."""
@@ -188,9 +188,9 @@ class UKVATAgentToolSet(AgentToolSet):
                 "errors": [{"field": e.field, "message": e.message} for e in report.errors],
                 "warnings": [{"field": w.field, "message": w.message} for w in report.warnings],
             }
-            return _tool_ok(result)
+            return tool_ok(result)
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── ERP 集成 MCP tools (v0 新加) ──
 
@@ -216,32 +216,32 @@ class UKVATAgentToolSet(AgentToolSet):
         try:
             if source == "demo":
                 if not case_id:
-                    return _tool_error(
+                    return tool_error(
                         "case_id is required for source='demo'",
                         detail={"available_cases": list_demo_cases()},
                     )
                 try:
                     ir = load_demo_case(case_id)
                 except DemoCaseNotFoundError as e:
-                    return _tool_error(
+                    return tool_error(
                         str(e),
                         detail={"available_cases": list_demo_cases()},
                     )
             elif source == "csv":
                 if not csv_base64:
-                    return _tool_error("csv_base64 is required for source='csv'")
+                    return tool_error("csv_base64 is required for source='csv'")
                 csv_bytes = base64.b64decode(csv_base64)
                 if len(csv_bytes) > 10 * 1024 * 1024:
-                    return _tool_error("file exceeds 10MB limit")
+                    return tool_error("file exceeds 10MB limit")
                 try:
                     ir = parse_csv(csv_bytes, profile=profile)
                 except CsvParseError as e:
-                    return _tool_error(f"CSV parse error: {e}")
+                    return tool_error(f"CSV parse error: {e}")
             elif source == "erpnext":
                 from backend.services.erpnext_buffer import get_import_result
                 ir = get_import_result()
                 if ir is None:
-                    return _tool_error(
+                    return tool_error(
                         "no ERPNext data received yet",
                         detail={
                             "hint": "submit a Sales/Purchase Invoice in ERPNext "
@@ -249,9 +249,9 @@ class UKVATAgentToolSet(AgentToolSet):
                         },
                     )
             else:
-                return _tool_error(f"unknown source: {source!r}")
+                return tool_error(f"unknown source: {source!r}")
         except Exception as e:
-            return _tool_error(f"unexpected error: {e}")
+            return tool_error(f"unexpected error: {e}")
 
         ir_dict = ir.model_dump(mode="json")
 
@@ -265,7 +265,7 @@ class UKVATAgentToolSet(AgentToolSet):
             # 不覆盖已有字段（防御性）
             ir_dict.setdefault(k, v)
 
-        return _tool_ok({
+        return tool_ok({
             "success": True,
             "import_result": ir_dict,
             "summary": {
@@ -289,7 +289,7 @@ class UKVATAgentToolSet(AgentToolSet):
         v0 简化：从 import_result 缓存读，不查 DB。
         """
         # v0 暂不接入 session 缓存 → 返空 + 提示
-        return _tool_ok({
+        return tool_ok({
             "success": True,
             "invoices": [],
             "note": "v0: InvoiceMultiSelectPanel loads from /api/erp/cases/{case_id} directly, not via this tool",
@@ -301,13 +301,13 @@ class UKVATAgentToolSet(AgentToolSet):
         """Submit a UK VAT Return to HMRC."""
         vrn = taxpayer_id
         if not vrn or not period_key:
-            return _tool_error("VRN and period_key are required")
+            return tool_error("VRN and period_key are required")
 
         # 默认使用模拟模式 (与 get_obligations 对齐)。这样 Kimi/ANTHROPIC
         # 凭证不会被误用为 HMRC 凭证, 演示时也不需要真 OAuth token。
         if hmrc_mode() != "live":
             # mock 模式: 不调真 HMRC, 返回一个伪 receipt
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "mode": "mock",
                 "processing_date": "2026-04-07",
@@ -348,21 +348,21 @@ class UKVATAgentToolSet(AgentToolSet):
                 "payment_indicator": receipt.get("paymentIndicator"),
                 "charge_ref_number": receipt.get("chargeRefNumber"),
             }
-            return _tool_ok(result)
+            return tool_ok(result)
         except PermissionError as e:
-            return _tool_error("HMRC authentication required", str(e))
+            return tool_error("HMRC authentication required", str(e))
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     async def get_return(self, taxpayer_id: str, period_key: str) -> dict:
         """Retrieve a previously submitted UK VAT Return."""
         vrn = taxpayer_id
         if not vrn or not period_key:
-            return _tool_error("VRN and period_key are required")
+            return tool_error("VRN and period_key are required")
 
         # mock 短路 (与 submit_return / get_obligations 对齐)
         if hmrc_mode() != "live":
-            return _tool_ok({
+            return tool_ok({
                 "success": True,
                 "mode": "mock",
                 "period_key": period_key,
@@ -392,26 +392,26 @@ class UKVATAgentToolSet(AgentToolSet):
                 "total_purchases_ex_vat": ret.total_value_purchases_ex_vat,
                 "received": ret.received,
             }
-            return _tool_ok(result)
+            return tool_ok(result)
         except PermissionError as e:
-            return _tool_error("HMRC authentication required", str(e))
+            return tool_error("HMRC authentication required", str(e))
         except Exception as e:
-            return _tool_error(str(e))
+            return tool_error(str(e))
 
     # ── 数据分析工具 ──
 
     async def analyze_business_data(self, company_data_json: str) -> dict:
         """Analyze raw business data and calculate UK VAT Return."""
         if not company_data_json:
-            return _tool_error("company_data_json is required")
+            return tool_error("company_data_json is required")
 
         try:
             result = _analyze_business_data(company_data_json)
             if not result.get("success"):
-                return _tool_error(result.get("error", "Analysis failed"))
-            return _tool_ok(result)
+                return tool_error(result.get("error", "Analysis failed"))
+            return tool_ok(result)
         except Exception as e:
-            return _tool_error(f"Analysis error: {str(e)}")
+            return tool_error(f"Analysis error: {str(e)}")
 
     # ── 工具元数据 ──
 
