@@ -1,0 +1,31 @@
+{
+  "tax_matrix": [
+    { "id": 1, "jurisdiction": "UK", "tax_code": "VAT", "tax_name": "增值税(标准税率)", "rate": "20%", "platform_support": "supported" },
+    { "id": 2, "jurisdiction": "UK", "tax_code": "CT", "tax_name": "Corporation Tax", "rate": "25%(3/200 边际)", "platform_support": "partial" },
+    { "id": 3, "jurisdiction": "UK", "tax_code": "PAYE", "tax_name": "PAYE & NIC", "rate": "12%/13.8%", "platform_support": "partial" },
+    { "id": 4, "jurisdiction": "UK", "tax_code": "DUTY", "tax_name": "Import Duty", "rate": "5%", "platform_support": "not_supported" },
+    { "id": 5, "jurisdiction": "UK", "tax_code": "BR", "tax_name": "Business Rates", "rate": "UBR 51.2p", "platform_support": "not_supported" },
+    { "id": 6, "jurisdiction": "UK", "tax_code": "AL", "tax_name": "Apprenticeship Levy", "rate": "0.5%(工资-£3M)", "platform_support": "not_supported" },
+    { "id": 7, "jurisdiction": "UK", "tax_code": "WHT-I", "tax_name": "WHT(利息)", "rate": "中英协定 10%", "platform_support": "not_supported" },
+    { "id": 8, "jurisdiction": "UK", "tax_code": "WHT-R", "tax_name": "WHT(特许权)", "rate": "中英协定 10%", "platform_support": "not_supported" },
+    { "id": 9, "jurisdiction": "UK", "tax_code": "WHT-D", "tax_name": "WHT(股息)", "rate": "0%(100% 控股)", "platform_support": "supported" },
+    { "id": 10, "jurisdiction": "CN", "tax_code": "VAT", "tax_name": "中国增值税(一般)", "rate": "13%", "platform_support": "not_supported" },
+    { "id": 11, "jurisdiction": "CN", "tax_code": "SURTAX", "tax_name": "城建税/教育费附加", "rate": "12%", "platform_support": "not_supported" },
+    { "id": 12, "jurisdiction": "CN", "tax_code": "CIT", "tax_name": "企业所得税", "rate": "25%", "platform_support": "not_supported" },
+    { "id": 13, "jurisdiction": "CN", "tax_code": "FTC", "tax_name": "境外税收抵免", "rate": "抵免限额法", "platform_support": "not_supported" },
+    { "id": 14, "jurisdiction": "CN", "tax_code": "IIT", "tax_name": "个税代扣", "rate": "累进", "platform_support": "not_supported" },
+    { "id": 15, "jurisdiction": "CN", "tax_code": "STAMP", "tax_name": "印花税", "rate": "0.03%(购销)", "platform_support": "not_supported" },
+    { "id": 16, "jurisdiction": "CN", "tax_code": "PROPERTY", "tax_name": "房产税(自用)", "rate": "1.2%×70%", "platform_support": "not_supported" },
+    { "id": 17, "jurisdiction": "CN", "tax_code": "VAT-RENT", "tax_name": "不动产租赁 VAT", "rate": "5%(简易)/9%", "platform_support": "not_supported" },
+    { "id": 18, "jurisdiction": "CN", "tax_code": "VAT-PM", "tax_name": "物业管理 VAT", "rate": "3%(小规模)/6%", "platform_support": "not_supported" }
+  ],
+  "summary_stats": {
+    "total_tax_types": 18,
+    "supported": 2,
+    "partial": 2,
+    "not_supported": 14,
+    "filable_now": 2,
+    "completion_pct": 11
+  },
+  "p0_priority": ["UK CT", "CN VAT", "CN CIT"]
+}

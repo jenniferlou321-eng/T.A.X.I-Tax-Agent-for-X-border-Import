@@ -176,6 +176,8 @@ export interface ImportResult {
   source_hash: string;
   warnings?: string[];
   rejected_rows?: Array<{ row_index: number; reason: string; raw: Record<string, string> }>;
+  /** Pydantic ImportResult 自由 dict 字段(嘉汉案例 metadata 在此) */
+  metadata?: Record<string, unknown>;
 }
 
 export interface ReconciliationDelta {

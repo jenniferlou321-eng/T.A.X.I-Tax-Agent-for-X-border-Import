@@ -5,7 +5,6 @@ import {
   GlobeAltIcon,
   DocumentTextIcon,
   Cog6ToothIcon,
-  BellIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   ShieldCheckIcon,
@@ -15,6 +14,7 @@ import {
   CpuChipIcon,
 } from '@heroicons/react/24/outline'
 import { useTheme } from '../hooks/useTheme'
+import UpdateNotificationCenter from '../components/UpdateNotificationCenter'
 
 const navItems = [
   { to: '/dashboard', label: '仪表盘', icon: HomeIcon },
@@ -79,6 +79,8 @@ function Layout() {
     if (location.pathname.startsWith('/filings/')) return '申报详情'
     if (location.pathname === '/agent') return '智能助手'
     if (location.pathname === '/settings') return '设置'
+    if (location.pathname.startsWith('/cases/')) return 'Case 数据预览'
+    if (location.pathname === '/docs/jiahang-capability-matrix') return '平台能力差距矩阵'
     return ''
   })()
 
@@ -169,10 +171,7 @@ function Layout() {
 
           <div className="flex items-center gap-1">
             <ThemeToggle />
-            <button className="relative p-2 text-fg-muted hover:text-fg hover:bg-bg-elevated rounded-md transition-colors duration-200">
-              <BellIcon className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full ring-2 ring-bg" />
-            </button>
+            <UpdateNotificationCenter />
           </div>
         </header>
 

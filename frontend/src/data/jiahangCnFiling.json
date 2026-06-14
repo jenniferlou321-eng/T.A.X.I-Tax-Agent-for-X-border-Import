@@ -1,0 +1,93 @@
+{
+  "company": "江苏嘉汉国际贸易有限公司",
+  "scenario": "中资跨境集团 — CN 母公司年度申报 FY2023",
+  "related_uk_case": "case-jiahang-uk-fy2023",
+
+  "vat_outputs": {
+    "vat_payable_cny": 2461500,
+    "output_vat_13_cny": 2732000,
+    "output_vat_5_simple_cny": 12000,
+    "output_vat_3_ps_cny": 2400,
+    "input_vat_cny": 270500,
+    "intra_group_export_cny": 1290000,
+    "period": "FY2023 (12 月度申报)"
+  },
+
+  "cit_outputs": {
+    "cit_payable_cny": 2032500,
+    "pretax_accounting_profit_cny": 8000000,
+    "taxable_income_addback_cny": 280000,
+    "taxable_income_deduction_cny": 150000,
+    "taxable_income_net_cny": 8130000,
+    "revenue_total_cny": 22920000,
+    "effective_rate": 0.25,
+    "net_income_tax_expense_cny": 1918821
+  },
+
+  "withholding_tax": {
+    "total_credit_cny": 43679,
+    "dividend_received_cny": 1121000,
+    "interest_received_cny": 216250,
+    "royalty_received_cny": 302500,
+    "wht_interest_cny": 13334,
+    "wht_royalty_cny": 30345,
+    "credit_limit_cny": 390343
+  },
+
+  "dta": {
+    "beginning_cny": 37500,
+    "reversal_cny": 37500,
+    "new_recognized_cny": 70000,
+    "ending_cny": 70000,
+    "events": [
+      { "id": "C1-000a", "date": "2023-01-03", "type": "reversal", "amount_cny": 150000, "dta_impact_cny": -37500, "desc": "支付 FY2022 计提的年末奖金" },
+      { "id": "C1-040c", "date": "2023-12-31", "type": "new", "amount_cny": 200000, "dta_impact_cny": 50000, "desc": "本年计提未发年终奖金" },
+      { "id": "C1-040d", "date": "2023-12-31", "type": "new", "amount_cny": 50000, "dta_impact_cny": 12500, "desc": "本年计提坏账准备" },
+      { "id": "C1-040e", "date": "2023-12-31", "type": "new", "amount_cny": 30000, "dta_impact_cny": 7500, "desc": "本年计提产品质量保证预计负债" }
+    ]
+  },
+
+  "related_party": {
+    "loan_principal_total_cny": 4250000,
+    "loan_principal_disbursed_cny": 4250000,
+    "loan_principal_repaid_cny": 2637000,
+    "loan_principal_outstanding_cny": 1613000,
+    "interest_paid_cny": 27825,
+    "interest_wht_cny": 2782,
+    "interest_net_received_cny": 25043,
+    "royalty_paid_gbp": 35000,
+    "royalty_wht_cny": 4843,
+    "dividend_paid_gbp": 130000,
+    "dividend_wht_cny": 0,
+    "intra_group_export_cny": 1290000,
+    "events": [
+      { "id": "C1-010a", "type": "loan_disbursement", "direction": "CN→UK", "amount_cny": 4250000, "note": "本金 £500k × 8.5" },
+      { "id": "C1-011", "type": "interest_received", "direction": "UK→CN", "amount_cny": 107500, "wht_cny": 10750, "net_cny": 96750, "note": "利息第一期 £12.5k × 8.6,扣 10% WHT" },
+      { "id": "C1-018", "type": "royalty_received", "direction": "UK→CN", "amount_cny": 172000, "wht_cny": 17200, "net_cny": 154800, "note": "特许权第一笔 £20k × 8.6" },
+      { "id": "C1-029", "type": "interest_received", "direction": "UK→CN", "amount_cny": 108750, "wht_cny": 10875, "net_cny": 97875, "note": "利息第二期 £12.5k × 8.7" },
+      { "id": "C1-030", "type": "royalty_received", "direction": "UK→CN", "amount_cny": 130500, "wht_cny": 13050, "net_cny": 117450, "note": "特许权第二笔 £15k × 8.7" },
+      { "id": "C1-032", "type": "principal_repayment", "direction": "UK→CN", "principal_cny": 1740000, "interest_cny": 24168, "wht_cny": 2418, "net_cny": 1761750, "note": "归还本金 £200k + 利息" },
+      { "id": "C1-037", "type": "principal_repayment", "direction": "UK→CN", "principal_cny": 870000, "interest_cny": 6647, "wht_cny": 661, "net_cny": 875986, "note": "尾款清零" },
+      { "id": "C1-010", "type": "dividend_received", "direction": "UK→CN", "amount_cny": 425000, "wht_cny": 0, "note": "股息第一笔 £50k × 8.5,0% WHT" },
+      { "id": "C1-040", "type": "dividend_received", "direction": "UK→CN", "amount_cny": 696000, "wht_cny": 0, "note": "股息第二笔 £80k × 8.7,0% WHT" },
+      { "id": "C1-040a", "type": "export_sale", "direction": "CN→UK", "amount_cny": 1290000, "note": "FOB £150k × 8.6,出口零税率" }
+    ]
+  },
+
+  "amendments": [
+    { "order": 1, "title": "租金 VAT 5% 简易计税 + 3% 物业费拆分", "impact_cny": "节省 VAT ~¥42k/年", "reason": "2016.4.30 前取得不动产 + 选择简易计税" },
+    { "order": 2, "title": "新增 5 笔 FY2024 整合业务", "impact_cny": "笔记本 ¥13k + 激光切割机 ¥130k 进项", "reason": "扩展固定资产类型" },
+    { "order": 3, "title": "新增 2 笔跨年度业务(C1-000a/b)", "impact_cny": "调减 CIT ¥150k", "reason": "体现权责发生制 vs 收付实现制" },
+    { "order": 4, "title": "3 类暂性差异 → DTA", "impact_cny": "DTA 期末 ¥70k", "reason": "年末计提未发奖金/坏账/预计负债" },
+    { "order": 5, "title": "汇算清缴 1 笔 → 4 笔分录", "impact_cny": "净调增 ¥130k", "reason": "含 DTA 确认 / 转回 + 境外抵免独立列示" }
+  ],
+
+  "expected_filings": {
+    "vat_monthly_deadline": "次月 15 号前",
+    "cit_q1_prepayment_deadline": "2023-04-15",
+    "annual_cit_settlement_deadline": "2024-05-31",
+    "iit_monthly_deadline": "次月 15 号前",
+    "stamp_duty_event": "合同签订时",
+    "property_tax_quarterly_deadline": "每季度首月"
+  }
+}

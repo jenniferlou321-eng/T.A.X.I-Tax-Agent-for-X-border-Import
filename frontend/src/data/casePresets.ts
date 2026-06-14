@@ -31,7 +31,11 @@ export interface CasePreset {
   /** 多管辖地: 多个 case_id 列表(优先于 erpCaseId) */
   erpCaseIds?: string[];
   /** Case B 专用: 引用 frontend/src/data/cnParentFiling.json */
-  groupDataRef?: 'cnParentFiling';
+  groupDataRef?: 'cnParentFiling' | 'jiahangCnFiling';
+  /** 案例分类(嘉汉案例 = 驱动平台完善路线图) */
+  kind?: 'standard' | 'case-jiahang' | 'doc-link';
+  /** doc-link 专用: 点击后跳转到文档 URL(相对 /docs/) */
+  entryRoute?: string;
 }
 
 const DEFAULT_CURRENCY = 'GBP';
@@ -100,6 +104,58 @@ export const casePresets: CasePreset[] = [
     erpCaseId: 'case-b-cn-parent',
     erpCaseIds: ['case-b-cn-parent', 'case-a-uk-subsidiary'],  // CN + UK 双国
     groupDataRef: 'cnParentFiling',
+  },
+
+  // ── Case J: 嘉汉跨境集团 — UK 子公司 FY2023(主线) ─────────
+  {
+    id: 'case-jiahang-uk-fy2023',
+    title: '嘉汉集团 · UK 子公司 FY2023',
+    description: 'Jiahang UK Holdings Ltd FY2023:33 笔业务覆盖 9 个 UK 税种。UK CT £43,950(3/200 公式)+ WHT £6,278(利息+特许权 10% 中英协定)+ Q1-Q4 VAT 净应缴 £12,925。9 个税种中 1 支持 / 2 部分 / 5 待实现 / 1 不需申报,案例驱动平台完善路线图。',
+    icon: 'Globe2',
+    kind: 'case-jiahang',
+    // 嘉汉不是 9-Box 体系,lineItems 为空(数字在 erp_import.json metadata 与 tax_requirements.json)
+    lineItems: [],
+    taxpayer: {
+      name: 'Jiahang UK Holdings Ltd.',
+      // Demo: 用已在 HMRC 沙箱注册的 VRN(960606228)替换占位号,保证 4d 真提交不失败;公司名仍显示嘉汉品牌。
+      tax_id: '960606228',
+      tax_id_type: 'vrn',
+    },
+    erpCaseId: 'case-jiahang-uk-fy2023',
+  },
+
+  // ── Case J: 嘉汉跨境集团 — CN 母公司 FY2023(主线) ─────────
+  {
+    id: 'case-jiahang-cn-fy2023',
+    title: '嘉汉集团 · CN 母公司 FY2023',
+    description: '江苏嘉汉国际贸易有限公司 FY2023:64 笔业务覆盖 9 个 CN 税种。CIT 应纳 ¥2,032,500(8,000k + 280k 调增 - 150k 调减)× 25% + 境外抵免 ¥43,679(足额)+ DTA 期末 ¥70,000(期初 37.5k - 转回 37.5k + 新增 70k)。VAT 全年应纳 ¥2,461,500(销 2,732k - 进 270.5k)。9 个 CN 税种 0 支持 / 全部待实现。',
+    icon: 'Building2',
+    kind: 'case-jiahang',
+    lineItems: [],
+    taxpayer: {
+      name: '江苏嘉汉国际贸易有限公司',
+      tax_id: '91320000MA1XXXXXX',
+      tax_id_type: 'uscc',
+    },
+    erpCaseId: 'case-jiahang-cn-fy2023',
+    groupDataRef: 'jiahangCnFiling',
+  },
+
+  // ── 能力差距卡(跳转到 doc,不入 demoStore) ─────────
+  {
+    id: 'case-jiahang-capability',
+    title: '平台能力差距矩阵(18 税种 × TAXI 支持状态)',
+    description: '基于嘉汉案例驱动分析的 18 税种能力矩阵:1/18 已支持 + 2/18 部分支持 + 15/18 待实现 = 11% 已支持。P0 优先:UK CT、CN VAT、CN CIT(金额大、频率高、跨境必经)。',
+    icon: 'Table',
+    kind: 'doc-link',
+    entryRoute: '/docs/jiahang-capability-matrix',
+    lineItems: [],
+    taxpayer: {
+      name: 'T.A.X.I. 平台路线图',
+      tax_id: 'P0-P3',
+      tax_id_type: 'doc',
+    },
+    erpCaseId: 'case-jiahang-capability', // 仅为 validIds 白名单
   },
 ];
 

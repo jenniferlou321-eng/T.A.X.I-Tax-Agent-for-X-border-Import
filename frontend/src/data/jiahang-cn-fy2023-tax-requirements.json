@@ -1,0 +1,140 @@
+{
+  "company": "江苏嘉汉国际贸易有限公司",
+  "company_type": "cn_parent",
+  "tax_id": "91320000MA1XXXXXX",
+  "fiscal_year": "FY2023",
+  "period": "2023-01-01~2023-12-31",
+  "filings": [
+    {
+      "tax_type": "CIT",
+      "tax_name": "中国企业所得税",
+      "period": "FY2023 (annual)",
+      "deadline": "2024-05-31 (汇算清缴截止)",
+      "interim_deadlines": "Q1/Q2/Q3 各季度次月 15 号前预缴",
+      "accounting_profit": 8000000,
+      "taxable_income_addback": 280000,
+      "taxable_income_deduction": 150000,
+      "taxable_income_net": 8130000,
+      "cit_payable": 2032500,
+      "cit_rate": "25%",
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["BrowserChannel(电子税务局)", "季度预缴计算", "汇算清缴 15+ 类调整项", "暂性差异 DTA 计算"],
+      "evidence": "C1-041 已做完整汇算清缴,4 笔分录(当期所得税 + DTA 确认 + 境外抵免 + DTA 转回)"
+    },
+    {
+      "tax_type": "FTC",
+      "tax_name": "境外税收抵免",
+      "period": "FY2023",
+      "overseas_income_total": 1561373,
+      "dividend_received_cny": 1124500,
+      "interest_received_cny": 133423,
+      "royalty_received_cny": 303450,
+      "overseas_tax_paid_total": 43679,
+      "credit_limit": 390343,
+      "credit_taken": 43679,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["抵免限额法(分国不分项)", "中英协定第 22 条消除双重征税条款应用"],
+      "evidence": "C1-041 已计算,UK WHT 利息 ¥13,334 + 特许权 ¥30,345 = ¥43,679 全额抵免"
+    },
+    {
+      "tax_type": "VAT",
+      "tax_name": "中国增值税(一般纳税人)",
+      "period": "Monthly (12 个 filing)",
+      "annual_vat_output": 2732000,
+      "annual_vat_input": 270500,
+      "annual_vat_payable": 2461500,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["BrowserChannel(电子税务局)", "销项/进项发票认证", "多档税率(13%/9%/6%/5%/3%)决策", "月度申报自动化"],
+      "evidence": "C1-008/022/026 已做 2/5/6 月申报,全年销项 ¥2,732,000 - 进项 ¥270,500 = ¥2,461,500"
+    },
+    {
+      "tax_type": "SURTAX",
+      "tax_name": "城建税/教育费附加/地方教育附加",
+      "period": "Monthly (随 VAT)",
+      "rate": "12% (7% 城建 + 3% 教附 + 2% 地附)",
+      "annual_surtax_paid": 131144,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["与 CN VAT 联报通道", "三档附加率(7%/3%/2%)映射"],
+      "evidence": "C1-009/022a/027 已缴纳 2/5/H1 月:¥73,668 + ¥21,648 + ¥34,440 = ¥129,756(全年约 ¥131,144)"
+    },
+    {
+      "tax_type": "IIT",
+      "tax_name": "个人所得税(代扣代缴)",
+      "period": "Monthly (12 个 filing)",
+      "annual_payroll": 18000000,
+      "annual_iit_withheld": 1135000,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["综合所得汇算", "专项附加扣除", "工资薪金累进税率计算器"],
+      "evidence": "C1-003/016/021/025/035/039 已代扣 6 个月,合计约 ¥85k×6 + ¥220k(12月含年终奖) ≈ ¥1,135,000"
+    },
+    {
+      "tax_type": "STAMP",
+      "tax_name": "印花税(购销合同)",
+      "period": "FY2023 (按合同签订时)",
+      "annual_stamp_paid": 2100,
+      "rate": "0.03% (购销合同)",
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["购销/合同/产权 税率映射", "应税凭证目录"],
+      "evidence": "C1-056:0.03% × ¥7,000,000 = ¥2,100(单笔)"
+    },
+    {
+      "tax_type": "PROPERTY",
+      "tax_name": "房产税(自用办公楼)",
+      "period": "Quarterly",
+      "rate": "1.2% × 70% (从价计征)",
+      "annual_property_tax": 420000,
+      "quarterly_property_tax": 105000,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["从价/从租计税", "城镇土地使用税并行", "季度申报通道"],
+      "evidence": "C1-013/028/031/033 已缴纳 Q1/Q2/Q3/Q4 各 ¥105,000 = ¥420,000/年"
+    },
+    {
+      "tax_type": "VAT-RENT",
+      "tax_name": "不动产租赁 VAT(5% 简易计税)",
+      "period": "Monthly (随 VAT)",
+      "rate": "5% (2016.4.30 前取得)",
+      "annual_rent_vat": 12000,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["5% vs 9% 决策树", "水电分摊"],
+      "evidence": "C1-006(2月 ¥3,000) + C1-034(Q4 ¥9,000) = ¥12,000/年"
+    },
+    {
+      "tax_type": "VAT-PM",
+      "tax_name": "物业管理服务 VAT(3% 小规模)",
+      "period": "Monthly (随 VAT)",
+      "rate": "3% (小规模,现代服务业)",
+      "annual_pm_vat": 2400,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["现代服务业判定", "小规模 vs 一般纳税人决策"],
+      "evidence": "C1-006b(2月 ¥600) + C1-034b(Q4 ¥1,800) = ¥2,400/年"
+    }
+  ],
+  "summary": {
+    "total_tax_types": 9,
+    "supported": 0,
+    "partial": 0,
+    "not_supported": 9,
+    "filable_in_cn": 0,
+    "annual_tax_due_cny": {
+      "cit": 2032500,
+      "foreign_tax_credit": -43679,
+      "vat": 2461500,
+      "surtax": 131144,
+      "iit": 1135000,
+      "stamp": 2100,
+      "property": 420000,
+      "vat_rent": 12000,
+      "vat_pm": 2400
+    },
+    "net_income_tax_expense": 1918821
+  }
+}

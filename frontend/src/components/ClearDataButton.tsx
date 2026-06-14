@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { api } from '../api/client';
 import { useDemoStore } from '../stores/demoStore';
 
 export default function ClearDataButton() {
@@ -7,8 +8,14 @@ export default function ClearDataButton() {
   const [confirming, setConfirming] = useState(false);
   const [cleared, setCleared] = useState(false);
 
-  const handleClear = () => {
+  const handleClear = async () => {
     clearAll();
+    try {
+      // 前端清空数据时,同步清空 Agent 固定工作目录,避免下次对话读到旧 case。
+      await api.agent.clearWorkspace();
+    } catch (err) {
+      console.error('Failed to clear agent workspace:', err);
+    }
     setCleared(true);
     setTimeout(() => {
       setConfirming(false);

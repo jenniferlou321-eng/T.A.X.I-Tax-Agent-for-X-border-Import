@@ -17,19 +17,74 @@ import {
   BuildingOfficeIcon,
   MagnifyingGlassIcon,
   ChartBarIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
 } from '@heroicons/react/24/outline'
 import QuickActionButton from '../components/QuickActionButton'
 import InvoiceMultiSelectPanel from '../components/InvoiceMultiSelectPanel'
 import NineBoxDiffTable from '../components/NineBoxDiffTable'
-import ThinkingBlock from '../components/ThinkingBlock'
+import AgentActivityPanel, { type ActivityEntry } from '../components/AgentActivityPanel'
 import Markdown from '../components/Markdown'
 import { useDemoStore } from '../stores/demoStore'
 import { casePresets } from '../data/casePresets'
 import { api } from '../api/client'
 import type { ImportResult, ReconciliationDelta, ERPNineBox } from '../types'
 import { consumeAguiStream, type BaseEvent } from '../api/agentStream'
+import ErrorCard, { type ErrorPayload } from '../components/ErrorCard'
+
+/** 从 fetch() 异常或 SSE 异常里抽出 ErrorPayload。
+ *  - 网络层(浏览器断网 / 后端 8765 没起):kind=network
+ *  - HTTP 非 2xx 且 body 形如 {detail, kind, hint, request_id}:直接转发
+ *  - HTTP 非 2xx 且 body 是其它:用 status + statusText 兜底
+ *  - 流中途崩(ECONNRESET / AbortError 之外):kind=internal,带 requestId
+ */
+async function buildErrorFromFetchError(
+  err: unknown,
+  response: Response | undefined,
+): Promise<ErrorPayload> {
+  // 1) 网络层失败 — fetch 抛 TypeError("Failed to fetch" / "Load failed")
+  if (err instanceof TypeError) {
+    return {
+      kind: 'network',
+      hint: '后端 8765 不可达。检查 `./start_backend.sh` 是否在跑,或网络代理是否断了。',
+      message: err.message,
+    }
+  }
+  // 2) HTTP 非 2xx — 拿 body
+  if (response && !response.ok) {
+    const requestId = response.headers.get('X-Request-Id') || undefined
+    let body: any = null
+    try {
+      body = await response.clone().json()
+    } catch {
+      try {
+        body = await response.clone().text()
+      } catch {
+        /* ignore */
+      }
+    }
+    if (body && typeof body === 'object' && (body.detail || body.kind)) {
+      return {
+        kind: typeof body.kind === 'string' ? body.kind : 'unknown',
+        hint: typeof body.hint === 'string' ? body.hint : undefined,
+        message: typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`,
+        requestId: typeof body.request_id === 'string' ? body.request_id : requestId,
+        raw: body,
+      }
+    }
+    return {
+      kind: response.status >= 500 ? 'internal' : 'validation',
+      hint: `后端返回 ${response.status}。检查请求参数,或查 logs/backend.log。`,
+      message: typeof body === 'string' ? body : `HTTP ${response.status} ${response.statusText}`,
+      requestId,
+      raw: body,
+    }
+  }
+  // 3) 流中途崩
+  return {
+    kind: 'internal',
+    hint: '流式响应中途断开。复制详情贴给开发,或重试一次。',
+    message: err instanceof Error ? err.message : String(err),
+  }
+}
 
 interface ChatMessage {
   id: string
@@ -39,19 +94,14 @@ interface ChatMessage {
   status?: 'sending' | 'streaming' | 'done' | 'error'
   /** 扩展思考（extended thinking）流式累积。 */
   thinking?: string
-}
-
-/**
- * AG-UI 工具调用卡片：渲染 TOOL_CALL_START/ARGS/END/RESULT 序列。
- * 折叠显示 args + result（可能较大 JSON）。
- */
-interface ToolCallCard {
-  toolCallId: string
-  toolName: string
-  args: string
-  result?: string
-  argsOpen: boolean
-  resultOpen: boolean
+  /** REASONING_END 是否已到；仅当 thinking 非空时使用。 */
+  thinkingFinished?: boolean
+  /** 思考 + 工具调用活动，按到达时间顺序；per-message。
+   *  在 TEXT_MESSAGE_START 时把上一条 reasoning 消息的 activities 合并进来。 */
+  activities?: ActivityEntry[]
+  /** 结构化错误(RUN_ERROR 事件 / 启动期 chat 失败 / 流中断)。存在时,系统消息
+   *  气泡会渲染 ErrorCard 而不是纯文本。 */
+  error?: ErrorPayload
 }
 
 interface HistorySession {
@@ -119,13 +169,9 @@ export default function AgentChatPage() {
   const [showInvoicePanel, setShowInvoicePanel] = useState<{ type: 'sale' | 'purchase' } | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [lastDiff, _setLastDiff] = useState<{ erp: ERPNineBox; taxi: ERPNineBox; delta: ReconciliationDelta } | null>(null)
-  // AG-UI tool call 卡片（per-run），UI 在每条 assistant 消息下方渲染
-  const [toolCalls, setToolCalls] = useState<ToolCallCard[]>([])
-  // 思考段（extended thinking）状态：
-  //   - thinkingFinishedIds: 哪些 messageId 的 REASONING_END 已经到达
-  //   - thinkingCollapsedByUser: 用户手动 toggle 的覆盖（session 内有效）
-  const [thinkingFinishedIds, setThinkingFinishedIds] = useState<Set<string>>(new Set())
-  const [thinkingCollapsedByUser, setThinkingCollapsedByUser] = useState<Record<string, boolean>>({})
+  // 当前 agent 执行阶段（由后端 step_start/step_end 信号驱动）
+  const [activeStep, setActiveStep] = useState<string | null>(null)
+  // 注意:思考 + 工具调用活动从全局 state 改为 per-message,存在 ChatMessage.activities / thinkingFinished 上。
 
   // 当前活跃的 assistant 消息 id（用 ref 避免 stale closure，
   // 不依赖 messages 数组查找）
@@ -253,7 +299,7 @@ export default function AgentChatPage() {
   //
   // 状态机：
   //   - assistantIdRef 跟踪当前 active text message（首次 TEXT_MESSAGE_START 设置）
-  //   - toolCalls 数组存放 TOOL_CALL_START 起的卡片（直到 RUN_FINISHED 重置）
+  //   - activities 数组存放 thinking + TOOL_CALL 序列（直到 RUN_FINISHED 重置）
   //   - sessionId 从 RUN_STARTED 的 threadId 取
   // 多个工具调用 / 多段文本都会被正确切片（每个 TOOL_CALL_START 之前先关闭前一段 TEXT）
 
@@ -305,10 +351,8 @@ export default function AgentChatPage() {
 
   const resetRunState = useCallback(() => {
     assistantIdRef.current = ''
-    setToolCalls([])
-    // 清掉上一轮的 thinkingFinishedIds（每轮 run 重新计算）；
-    // thinkingCollapsedByUser 保留 — 那是"用户偏好"级别的 session 记忆。
-    setThinkingFinishedIds(new Set())
+    setActiveStep(null)
+    // activities / thinkingFinished 改为 per-message,无需全局重置
   }, [])
 
   // AG-UI 事件派发器
@@ -320,8 +364,12 @@ export default function AgentChatPage() {
         case 'REASONING_START': {
           const mid = String(event.messageId || '')
           if (!mid) break
-          // 思考可能在 text 之前到达：先建一个空的 assistant 占位，
-          // 后续 TEXT_MESSAGE_START 若用同 id，会复用此条。
+          // 让后续 TOOL_CALL_* 路由到这条 reasoning 消息
+          assistantIdRef.current = mid
+          // 先建一个空的 assistant 占位；activities 不预创建 thinking 条目,
+          // 等第一条 REASONING_MESSAGE_CONTENT 有内容时才加(避免空 thinking
+          // 折叠块在面板里显示成"空气泡")。TEXT_MESSAGE_START 时再把 thinking
+          // + activities 合并到 text 消息。
           setMessages((prev) => {
             if (prev.some((m) => m.id === mid)) return prev
             return [
@@ -333,6 +381,8 @@ export default function AgentChatPage() {
                 timestamp: new Date(),
                 status: 'streaming',
                 thinking: '',
+                thinkingFinished: false,
+                activities: [],
               },
             ]
           })
@@ -348,9 +398,23 @@ export default function AgentChatPage() {
           const delta = String(event.delta || '')
           if (!mid || !delta) break
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === mid ? { ...m, thinking: (m.thinking || '') + delta } : m
-            )
+            prev.map((m) => {
+              if (m.id !== mid) return m
+              const newThinking = (m.thinking || '') + delta
+              // 第一次收到非空 thinking 时,把 thinking 条目追加到 activities(若还没有)
+              const acts = m.activities ?? []
+              const hasThinkingEntry = acts.some(
+                (a) => a.type === 'thinking' && a.messageId === mid
+              )
+              const newActs = hasThinkingEntry
+                ? acts
+                : [...acts, { id: mid, type: 'thinking' as const, messageId: mid }]
+              return {
+                ...m,
+                thinking: newThinking,
+                activities: newActs,
+              }
+            })
           )
           scrollToBottom()
           break
@@ -362,35 +426,17 @@ export default function AgentChatPage() {
         case 'REASONING_END': {
           const mid = String(event.messageId || '')
           if (!mid) break
-          setThinkingFinishedIds((prev) => {
-            const s = new Set(prev)
-            s.add(mid)
-            return s
-          })
+          setMessages((prev) =>
+            prev.map((m) => (m.id === mid ? { ...m, thinkingFinished: true } : m))
+          )
           break
         }
         case 'RUN_STARTED': {
           const tid = String(event.threadId || '')
           const rid = String(event.runId || '')
           if (tid) setSessionId(tid)
-          // 重置本 run 的 tool call 卡片（新一轮 run 开始时清掉上一轮）
-          setToolCalls([])
-          // 用一个空 assistant 消息占位，让 user 看到"正在思考"动画
-          if (!assistantIdRef.current) {
-            const id = generateId()
-            assistantIdRef.current = id
-            setMessages((prev) => [
-              ...prev,
-              {
-                id,
-                role: 'assistant',
-                content: '',
-                timestamp: new Date(),
-                status: 'streaming',
-              },
-            ])
-          }
-          // log 一下 run id（dev 用）
+          // 不再创建空占位消息。第一个 REASONING_START 或 TEXT_MESSAGE_START
+          // 才会创建第一条 assistant 气泡（避免历史回归的"用户→空气泡→文本"）。
           if (rid && typeof window !== 'undefined') {
             // eslint-disable-next-line no-console
             console.debug('[agui] RUN_STARTED', { threadId: tid, runId: rid })
@@ -409,9 +455,36 @@ export default function AgentChatPage() {
               )
             )
           }
-          if (!assistantIdRef.current || assistantIdRef.current !== mid) {
-            assistantIdRef.current = mid
-            setMessages((prev) => [
+          // ★ 核心合并逻辑:若前一条 assistant 消息是同段的 reasoning 消息
+          //   (id 与 assistantIdRef.current 相同,content 为空),把它持有的
+          //   thinking + activities 搬过来,然后删掉 reasoning 消息。
+          //   后端 agui_adapter.py 初始化时 reasoning_msg_id 与 text_msg_id
+          //   是两个不同的 UUID,所以这里不能用 id 相等去合并 — 而是用"前一条
+          //   assistant 消息"作为合并源(它要么是上一段 text,要么是本段 reasoning)。
+          setMessages((prev) => {
+            const prevId = assistantIdRef.current
+            const prevIdx = prev.findIndex((m) => m.id === prevId)
+            const textMsgExists = prev.some((m) => m.id === mid)
+            if (prevIdx >= 0 && prev[prevIdx].id !== mid && prev[prevIdx].content === '') {
+              const reasonMsg = prev[prevIdx]
+              const newMsg: ChatMessage = {
+                id: mid,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date(),
+                status: 'streaming',
+                thinking: reasonMsg.thinking,
+                thinkingFinished: reasonMsg.thinkingFinished,
+                activities: reasonMsg.activities ?? [],
+              }
+              const filtered = prev.filter((m) => m.id !== reasonMsg.id)
+              if (textMsgExists) {
+                return filtered.map((m) => (m.id === mid ? { ...m, ...newMsg } : m))
+              }
+              return [...filtered, newMsg]
+            }
+            if (textMsgExists) return prev
+            return [
               ...prev,
               {
                 id: mid,
@@ -419,9 +492,11 @@ export default function AgentChatPage() {
                 content: '',
                 timestamp: new Date(),
                 status: 'streaming',
+                activities: [],
               },
-            ])
-          }
+            ]
+          })
+          assistantIdRef.current = mid
           break
         }
         case 'TEXT_MESSAGE_CONTENT': {
@@ -466,16 +541,30 @@ export default function AgentChatPage() {
           const tcid = String(event.toolCallId || '')
           const name = String(event.toolCallName || '(unnamed)')
           if (!tcid) break
-          setToolCalls((prev) => [
-            ...prev,
-            {
-              toolCallId: tcid,
-              toolName: name,
-              args: '',
-              argsOpen: true,
-              resultOpen: false,
-            },
-          ])
+          // 路由到当前 active assistant 消息(reasoning 阶段也允许出现 tool call)
+          const targetId = assistantIdRef.current
+          if (!targetId) break
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== targetId) return m
+              const acts = m.activities ?? []
+              if (acts.some((a) => a.toolCallId === tcid)) return m
+              return {
+                ...m,
+                activities: [
+                  ...acts,
+                  {
+                    id: tcid,
+                    type: 'tool_call',
+                    toolCallId: tcid,
+                    toolName: name,
+                    args: '',
+                    result: undefined,
+                  },
+                ],
+              }
+            })
+          )
           scrollToBottom()
           break
         }
@@ -483,34 +572,43 @@ export default function AgentChatPage() {
           const tcid = String(event.toolCallId || '')
           const delta = String(event.delta || '')
           if (!tcid) break
-          setToolCalls((prev) =>
-            prev.map((c) =>
-              c.toolCallId === tcid ? { ...c, args: c.args + delta } : c
-            )
+          const targetId = assistantIdRef.current
+          if (!targetId) break
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== targetId) return m
+              const acts = m.activities ?? []
+              return {
+                ...m,
+                activities: acts.map((a) =>
+                  a.toolCallId === tcid ? { ...a, args: (a.args || '') + delta } : a
+                ),
+              }
+            })
           )
           break
         }
         case 'TOOL_CALL_END': {
-          // 工具参数收尾：args 默认折叠，让 result 突出
-          const tcid = String(event.toolCallId || '')
-          if (!tcid) break
-          setToolCalls((prev) =>
-            prev.map((c) =>
-              c.toolCallId === tcid ? { ...c, argsOpen: false } : c
-            )
-          )
+          // 工具参数收尾（无需额外数据变更，args 已完整）
           break
         }
         case 'TOOL_CALL_RESULT': {
           const tcid = String(event.toolCallId || '')
           const content = String(event.content || '')
           if (!tcid) break
-          setToolCalls((prev) =>
-            prev.map((c) =>
-              c.toolCallId === tcid
-                ? { ...c, result: content, resultOpen: true }
-                : c
-            )
+          const targetId = assistantIdRef.current
+          if (!targetId) break
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== targetId) return m
+              const acts = m.activities ?? []
+              return {
+                ...m,
+                activities: acts.map((a) =>
+                  a.toolCallId === tcid ? { ...a, result: content } : a
+                ),
+              }
+            })
           )
           scrollToBottom()
           break
@@ -525,26 +623,44 @@ export default function AgentChatPage() {
             )
           )
           finishAssistantMessage()
-          // tool call 卡片保留在 UI 上供用户查看；下次 RUN_STARTED 会清
+          // 活动面板保留在 UI 上供用户查看；下次 RUN_STARTED 会清
           break
         }
         case 'RUN_ERROR': {
-          const msg = String(event.message || 'Agent 错误')
+          // 后端 agui_adapter._classify_error 已经把 kind/hint/requestId 一起塞进
+          // event 的 extra 字段(ConfiguredBaseModel extra="allow")。这里组装成
+          // ErrorPayload 交给 ErrorCard 渲染。
+          const errPayload: ErrorPayload = {
+            kind: typeof event.errorKind === 'string' ? event.errorKind : undefined,
+            hint: typeof event.errorHint === 'string' ? event.errorHint : undefined,
+            message: typeof event.message === 'string' ? event.message : undefined,
+            requestId: typeof event.requestId === 'string' ? event.requestId : undefined,
+            stage: typeof event.errorStage === 'string' ? event.errorStage : undefined,
+          }
           setMessages((prev) => [
             ...prev,
             {
               id: generateId(),
               role: 'system',
-              content: `❌ ${msg}`,
+              content: errPayload.message || 'Agent 错误',
               timestamp: new Date(),
               status: 'error',
+              error: errPayload,
             },
           ])
           setIsLoading(false)
           assistantIdRef.current = ''
           break
         }
-        // STEP_STARTED / STEP_FINISHED / STATE_SNAPSHOT / 等暂不渲染
+        case 'STEP_STARTED': {
+          setActiveStep(String(event.stepName || ''))
+          break
+        }
+        case 'STEP_FINISHED': {
+          setActiveStep(null)
+          break
+        }
+        // STATE_SNAPSHOT / 等暂不渲染
         default:
           break
       }
@@ -588,15 +704,21 @@ export default function AgentChatPage() {
       await consumeAguiStream(response, handleAguiEvent, { signal: controller.signal })
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
-      const errorMsg = err instanceof Error ? err.message : '连接失败'
+      // consumeAguiStream 抛 err 时我们拿不到 response(它在内部读 body 后就丢了)。
+      // 改用 err 自身结构(TypeError → network;其它 → internal) + err.message。
+      const errPayload = await buildErrorFromFetchError(
+        err,
+        err instanceof Error && (err as any).response as Response | undefined,
+      )
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           role: 'system',
-          content: `❌ ${errorMsg}`,
+          content: errPayload.message || '连接失败',
           timestamp: new Date(),
           status: 'error',
+          error: errPayload,
         },
       ])
       setIsLoading(false)
@@ -652,15 +774,19 @@ export default function AgentChatPage() {
       await consumeAguiStream(response, handleAguiEvent, { signal: controller.signal })
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
-      const errorMsg = err instanceof Error ? err.message : '连接失败'
+      const errPayload = await buildErrorFromFetchError(
+        err,
+        err instanceof Error && (err as any).response as Response | undefined,
+      )
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           role: 'system',
-          content: `❌ ${errorMsg}`,
+          content: errPayload.message || '连接失败',
           timestamp: new Date(),
           status: 'error',
+          error: errPayload,
         },
       ])
       setIsLoading(false)
@@ -720,15 +846,20 @@ export default function AgentChatPage() {
         const data = await res.json()
         setSampleData(data)
         sendWithRawData('请分析这些原始数据并帮我报税', data)
-      } catch {
+      } catch (err) {
+        const errPayload = await buildErrorFromFetchError(
+          err,
+          err instanceof Error && (err as any).response as Response | undefined,
+        )
         setMessages((prev) => [
           ...prev,
           {
             id: generateId(),
             role: 'system',
-            content: '❌ 加载示例数据失败，请检查网络连接',
+            content: '加载示例数据失败',
             timestamp: new Date(),
             status: 'error',
+            error: errPayload,
           },
         ])
       }
@@ -913,133 +1044,84 @@ export default function AgentChatPage() {
 
           {lastDiff && <NineBoxDiffTable erpBoxes={lastDiff.erp} taxiBoxes={lastDiff.taxi} delta={lastDiff.delta} />}
 
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-3 ${
-                msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}
-            >
-              {/* Avatar */}
+          {messages.map((msg, idx) => {
+            // 仅最后一个 assistant 气泡显示 activeStep 指示器(避免旧气泡继续"spinning")
+            const isLastAssistant =
+              msg.role === 'assistant' &&
+              idx === messages.findLastIndex((m) => m.role === 'assistant')
+            return (
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                  msg.role === 'user'
-                    ? 'bg-primary/20 text-primary'
-                    : msg.role === 'assistant'
-                    ? 'bg-secondary/20 text-secondary'
-                    : 'bg-bg-elevated text-fg-dim'
+                key={msg.id}
+                className={`flex gap-3 ${
+                  msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                 }`}
               >
-                {getMessageIcon(msg.role)}
-              </div>
-
-              {/* Content */}
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${getMessageStyle(
-                  msg.role
-                )}`}
-              >
-                {/* Assistant 消息：上方挂载折叠的思考段（如果存在）。
-                    注意：放在 bubble 内（而不是外层）— 这样 wrap 不会让
-                    thinking 与 user 的回复区隔开。 */}
-                {msg.role === 'assistant' && (msg.thinking || '').length > 0 && (
-                  <ThinkingBlock
-                    content={msg.thinking || ''}
-                    isStreaming={msg.status === 'streaming' && !thinkingFinishedIds.has(msg.id)}
-                    defaultCollapsed={thinkingFinishedIds.has(msg.id)}
-                    onUserToggle={(c) =>
-                      setThinkingCollapsedByUser((p) => ({ ...p, [msg.id]: c }))
-                    }
-                  />
-                )}
-
-                {msg.role === 'assistant' ? (
-                  msg.content ? (
-                    <Markdown content={msg.content} streaming={msg.status === 'streaming'} />
-                  ) : null
-                ) : (
-                  <span className="whitespace-pre-wrap">{msg.content}</span>
-                )}
-                {msg.status === 'streaming' && msg.content && (
-                  <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse rounded-sm" />
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* ── AG-UI tool call 卡片：本轮 run 期间的 TOOL_CALL_* 序列 ── */}
-          {toolCalls.length > 0 && (
-            <div className="space-y-2 fade-in">
-              {toolCalls.map((tc) => (
+                {/* Avatar */}
                 <div
-                  key={tc.toolCallId}
-                  className="ml-11 bg-accent-muted border border-accent/20 rounded-xl p-3 text-xs"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                    msg.role === 'user'
+                      ? 'bg-primary/20 text-primary'
+                      : msg.role === 'assistant'
+                      ? 'bg-secondary/20 text-secondary'
+                      : 'bg-bg-elevated text-fg-dim'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <WrenchIcon className="w-3.5 h-3.5 text-accent shrink-0" />
-                    <span className="font-semibold text-accent">{tc.toolName}</span>
-                    {!tc.result && (
-                      <span className="text-fg-dim animate-pulse">执行中...</span>
-                    )}
-                  </div>
+                  {getMessageIcon(msg.role)}
+                </div>
 
-                  {tc.args && (
-                    <details
-                      open={tc.argsOpen}
-                      onToggle={(e) => {
-                        const open = (e.target as HTMLDetailsElement).open
-                        setToolCalls((prev) =>
-                          prev.map((c) =>
-                            c.toolCallId === tc.toolCallId ? { ...c, argsOpen: open } : c
-                          )
-                        )
-                      }}
-                      className="mb-1"
-                    >
-                      <summary className="cursor-pointer text-fg-muted hover:text-fg select-none flex items-center gap-1">
-                        {(tc.argsOpen ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
-                        参数
-                      </summary>
-                      <pre className="mt-1.5 p-2 bg-bg-elevated/60 rounded text-[11px] font-mono text-fg overflow-x-auto whitespace-pre-wrap break-all">
-                        {(() => {
-                          // 尝试把 JSON 美化；非 JSON 也直接显示
-                          try { return JSON.stringify(JSON.parse(tc.args), null, 2) }
-                          catch { return tc.args }
-                        })()}
-                      </pre>
-                    </details>
-                  )}
-
-                  {tc.result !== undefined && (
-                    <details
-                      open={tc.resultOpen}
-                      onToggle={(e) => {
-                        const open = (e.target as HTMLDetailsElement).open
-                        setToolCalls((prev) =>
-                          prev.map((c) =>
-                            c.toolCallId === tc.toolCallId ? { ...c, resultOpen: open } : c
-                          )
-                        )
-                      }}
-                    >
-                      <summary className="cursor-pointer text-fg-muted hover:text-fg select-none flex items-center gap-1">
-                        {(tc.resultOpen ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
-                        结果
-                      </summary>
-                      <pre className="mt-1.5 p-2 bg-bg-elevated/60 rounded text-[11px] font-mono text-fg overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
-                        {(() => {
-                          try { return JSON.stringify(JSON.parse(tc.result || ''), null, 2) }
-                          catch { return tc.result || '' }
-                        })()}
-                      </pre>
-                    </details>
+                {/* Content */}
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${getMessageStyle(
+                    msg.role
+                  )}`}
+                >
+                  {msg.role === 'assistant' ? (
+                    <div className="space-y-2">
+                      {/* 1. 思考 + 工具调用,内嵌在气泡里(在文本之上) */}
+                      {msg.activities && msg.activities.length > 0 && (
+                        <AgentActivityPanel
+                          embedded
+                          activities={msg.activities}
+                          thinkingData={
+                            msg.thinking
+                              ? {
+                                  [msg.id]: {
+                                    content: msg.thinking,
+                                    isFinished: !!msg.thinkingFinished,
+                                  },
+                                }
+                              : {}
+                          }
+                          activeStep={isLastAssistant ? activeStep : null}
+                        />
+                      )}
+                      {/* 2. 文本内容(光标在 streaming 时显示) */}
+                      {msg.content ? (
+                        <Markdown content={msg.content} streaming={msg.status === 'streaming'} />
+                      ) : msg.status === 'streaming' ? (
+                        /* 无文本但仍在 streaming:显示光标(通常发生在 REASONING 阶段或刚到 TEXT 还没收到 content) */
+                        <span className="inline-block w-2 h-4 bg-primary animate-pulse rounded-sm" />
+                      ) : null}
+                      {msg.status === 'streaming' && msg.content && (
+                        <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse rounded-sm" />
+                      )}
+                    </div>
+                  ) : msg.error ? (
+                    // 结构化错误(RUN_ERROR 事件 / 流中断) → ErrorCard 渲染
+                    <ErrorCard error={msg.error} fallbackText={msg.content} />
+                  ) : (
+                    <span className="whitespace-pre-wrap">{msg.content}</span>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })}
 
-          {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+          {isLoading && (
+            messages[messages.length - 1]?.role !== 'assistant' ||
+            (messages[messages.length - 1]?.role === 'assistant' &&
+             !messages[messages.length - 1]?.content)
+          ) && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-full bg-secondary/20 text-secondary flex items-center justify-center shrink-0">
                 <SparklesIcon className="w-4 h-4 animate-pulse" />

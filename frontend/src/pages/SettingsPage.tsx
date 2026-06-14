@@ -27,6 +27,7 @@ function SettingsPage() {
     { id: 'company', label: '企业信息', icon: BuildingOfficeIcon },
     { id: 'notifications', label: '通知偏好', icon: BellIcon },
     { id: 'security', label: '安全设置', icon: ShieldCheckIcon },
+    { id: 'corpus', label: '知识库同步', icon: ArrowPathIcon },
   ]
 
   return (
@@ -63,6 +64,7 @@ function SettingsPage() {
           {activeTab === 'company' && <CompanySettings onSave={handleSave} saved={saved} />}
           {activeTab === 'notifications' && <NotificationSettings onSave={handleSave} saved={saved} />}
           {activeTab === 'security' && <SecuritySettings />}
+          {activeTab === 'corpus' && <CorpusSyncPanel />}
         </div>
       </div>
     </div>
@@ -379,6 +381,234 @@ function SecuritySettings() {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Knowledge Base Sync Panel ──────────────────────────────────
+
+type SourceEntry = {
+  source_id: string
+  title: string
+  url: string
+  source_authority: string
+  tax_tags: string[]
+  chunk_count: number
+  status: string
+}
+
+type DiffReportShape = {
+  summary: { new_count: number; modified_count: number }
+  new: SourceEntry[]
+  modified: SourceEntry[]
+}
+
+function CorpusSyncPanel() {
+  const [status, setStatus] = useState<'idle' | 'checking' | 'applying'>('idle')
+  const [diffReport, setDiffReport] = useState<DiffReportShape | null>(null)
+  const [applyResult, setApplyResult] = useState<{ new_count: number; modified_count: number; total_chunks: number } | null>(null)
+  const [noMirror, setNoMirror] = useState(false)
+  const [error, setError] = useState('')
+  const [partialMessage, setPartialMessage] = useState('')
+
+  const handleCheck = async () => {
+    setStatus('checking')
+    setError('')
+    setNoMirror(false)
+    setDiffReport(null)
+    setApplyResult(null)
+    setPartialMessage('')
+    try {
+      const res = await api.corpus.checkUpdates()
+      if (res.status === 'no_mirror') {
+        setNoMirror(true)
+        setStatus('idle')
+      } else if (res.status === 'ok' && res.report) {
+        setDiffReport(res.report)
+        setStatus('idle')
+      } else {
+        setError(res.message || '检查更新失败')
+        setStatus('idle')
+      }
+    } catch (e: any) {
+      setError(e.message || '检查更新失败')
+      setStatus('idle')
+    }
+  }
+
+  const handleApply = async () => {
+    setStatus('applying')
+    setError('')
+    setPartialMessage('')
+    try {
+      const res = await api.corpus.applyUpdates()
+      if ((res.status === 'ok' || res.status === 'partial') && res.result) {
+        setApplyResult(res.result)
+        setDiffReport(null)
+        if (res.status === 'partial') {
+          setPartialMessage(res.message || '部分成功')
+        }
+        setStatus('idle')
+      } else {
+        setError(res.message || '应用更新失败')
+        setStatus('idle')
+      }
+    } catch (e: any) {
+      setError(e.message || '应用更新失败')
+      setStatus('idle')
+    }
+  }
+
+  const hasChanges =
+    diffReport &&
+    (diffReport.summary.new_count > 0 || diffReport.summary.modified_count > 0)
+
+  const renderSourceList = (entries: SourceEntry[], label: string, color: string) => {
+    if (entries.length === 0) return null
+    const shown = entries.slice(0, 20)
+    const hidden = entries.length - shown.length
+    return (
+      <div>
+        <h4 className="text-sm font-medium text-fg mb-2">
+          {label} ({entries.length})
+        </h4>
+        <div className="max-h-60 overflow-y-auto space-y-1">
+          {shown.map((s) => (
+            <div
+              key={s.source_id}
+              className="text-xs text-fg-muted py-1.5 px-2 bg-bg-elevated rounded truncate"
+              title={s.url || s.source_id}
+            >
+              {s.chunk_count > 1 && (
+                <span className={`${color} font-medium mr-1.5`}>
+                  [{s.chunk_count} chunks]
+                </span>
+              )}
+              {s.title || s.source_id}
+            </div>
+          ))}
+          {hidden > 0 && (
+            <p className="text-xs text-fg-dim px-2 py-1">… 还有 {hidden} 个</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5 fade-in">
+      <h2 className="text-lg font-semibold text-fg">知识库同步</h2>
+      <p className="text-sm text-fg-muted leading-relaxed">
+        模拟"上游官网（如 HMRC / GOV.UK）发布新内容"的场景：
+        将新的 <code className="text-xs bg-bg-elevated px-1.5 py-0.5 rounded">chunks_with_tags.jsonl</code> 放入
+        <code className="text-xs bg-bg-elevated px-1.5 py-0.5 rounded ml-1">data/tax_corpus_mirror/</code> 目录，
+        然后点击下方按钮对比差异并增量合并到本地知识库。
+      </p>
+
+      {/* 操作按钮 */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleCheck}
+          disabled={status !== 'idle'}
+          className="btn btn-primary"
+        >
+          {status === 'checking' ? (
+            <>
+              <ArrowPathIcon className="w-4 h-4 animate-spin" />
+              检查中...
+            </>
+          ) : (
+            <>
+              <ArrowPathIcon className="w-4 h-4" />
+              检查更新
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 无镜像提示 */}
+      {noMirror && (
+        <div className="card p-4 bg-warning-muted/30 border border-warning/20">
+          <p className="text-sm text-warning">
+            未找到镜像文件。请将 <code className="text-xs bg-bg-elevated px-1.5 py-0.5 rounded">chunks_with_tags.jsonl</code> 放入
+            <code className="text-xs bg-bg-elevated px-1.5 py-0.5 rounded ml-1">data/tax_corpus_mirror/</code> 目录后再试。
+          </p>
+        </div>
+      )}
+
+      {/* 错误 */}
+      {error && (
+        <div className="card p-4 bg-error-muted/30 border border-error/20">
+          <p className="text-sm text-error">❌ {error}</p>
+        </div>
+      )}
+
+      {/* 差异报告 */}
+      {diffReport && (
+        <div className="card p-4 space-y-4">
+          <div>
+            <h3 className="text-base font-semibold text-fg">差异摘要</h3>
+            <div className="flex gap-3 mt-2 flex-wrap">
+              <div className="px-3 py-2 bg-info-muted/30 rounded-lg">
+                <span className="text-sm text-info font-medium">
+                  新增: {diffReport.summary.new_count} 个来源
+                </span>
+              </div>
+              <div className="px-3 py-2 bg-warning-muted/30 rounded-lg">
+                <span className="text-sm text-warning font-medium">
+                  修改: {diffReport.summary.modified_count} 个来源
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {renderSourceList(diffReport.new, '新增来源', 'text-info')}
+          {renderSourceList(diffReport.modified, '修改来源', 'text-warning')}
+
+          {hasChanges && (
+            <button
+              onClick={handleApply}
+              disabled={status !== 'idle'}
+              className="btn btn-primary"
+            >
+              {status === 'applying' ? (
+                <>
+                  <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                  应用中...
+                </>
+              ) : (
+                <>
+                  <CheckIcon className="w-4 h-4" />
+                  应用更新
+                </>
+              )}
+            </button>
+          )}
+
+          {!hasChanges && (
+            <div className="card p-3 bg-success-muted/30 border border-success/20">
+              <p className="text-sm text-success">
+                ✅ 知识库已是最新,没有需要更新的内容。
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 应用结果 */}
+      {applyResult && (
+        <div className="card p-4 bg-success-muted/30 border border-success/20 space-y-2">
+          <p className="text-sm text-success font-medium">✅ 更新已应用</p>
+          <div className="text-xs text-fg-muted space-y-0.5">
+            <p>新增: {applyResult.new_count} 个来源</p>
+            <p>修改: {applyResult.modified_count} 个来源</p>
+            <p>当前总 chunks: {applyResult.total_chunks}</p>
+          </div>
+          {partialMessage && (
+            <p className="text-xs text-warning mt-2">⚠️ {partialMessage}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

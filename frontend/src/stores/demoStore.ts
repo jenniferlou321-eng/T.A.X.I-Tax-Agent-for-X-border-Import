@@ -309,7 +309,10 @@ export const useDemoStore = create<DemoState>()(
           state.selectedPreset = state.buffer.presetId;
         }
         // 防御:若 buffer 指向已废弃的 preset id,清掉
-        const validIds = casePresets.map((p) => p.id);
+        // validIds 排除 doc-link(不入 buffer 流)
+        const validIds = casePresets
+          .filter((p) => p.kind !== 'doc-link')
+          .map((p) => p.id);
         if (state.buffer && !validIds.includes(state.buffer.presetId)) {
           state.buffer = null;
           state.selectedPreset = null;

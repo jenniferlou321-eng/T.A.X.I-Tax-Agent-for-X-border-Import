@@ -12,7 +12,7 @@ import type {
 // proxy (which forwards /api → http://127.0.0.1:8765) and the static preview
 // server's same-origin /api path. Override with VITE_API_BASE_URL when the
 // frontend and backend are on different hosts (e.g. direct cloudfront → ALB).
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const isFormData = options?.body instanceof FormData;
@@ -59,6 +59,18 @@ function formatErrorMessage(body: unknown, status: number, fallback: string): st
 }
 
 export const api = {
+  agent: {
+    mountWorkspaceCase: (caseId: string) =>
+      fetchApi<{ workspace_path: string; manifest: Record<string, unknown> }>(
+        `/api/agent/workspace/cases/${encodeURIComponent(caseId)}`,
+        { method: 'POST' }
+      ),
+    clearWorkspace: () =>
+      fetchApi<{ workspace_path: string; cleared: boolean }>(
+        '/api/agent/workspace',
+        { method: 'DELETE' }
+      ),
+  },
   jurisdictions: {
     // Backend wraps the list and returns tax_types as a string[] (e.g. ["vat"]).
     // Consumers should normalise tax_types to {value,label} objects as needed.
@@ -177,5 +189,45 @@ export const api = {
         count: { sales: number; purchases: number; cancelled: number; amends: number; total: number };
         raw: Array<{ id: string; cancelled: boolean; is_amend: boolean; parent?: string | null }>;
       }>(`/api/erp/hub/summary?period=${encodeURIComponent(period)}`),
+  },
+  corpus: {
+    // 知识库同步:对比镜像库与本地库,返回新增/修改的 source 列表
+    checkUpdates: () =>
+      fetchApi<{
+        status: 'ok' | 'no_mirror' | 'error';
+        message?: string;
+        report: null | {
+          summary: { new_count: number; modified_count: number };
+          new: Array<{
+            source_id: string;
+            title: string;
+            url: string;
+            source_authority: string;
+            tax_tags: string[];
+            chunk_count: number;
+            status: string;
+          }>;
+          modified: Array<{
+            source_id: string;
+            title: string;
+            url: string;
+            source_authority: string;
+            tax_tags: string[];
+            chunk_count: number;
+            status: string;
+          }>;
+        };
+      }>('/api/corpus/check-updates'),
+    // 一键应用:把镜像的差异合并进本地 JSONL,自动重载 in-memory 知识库
+    applyUpdates: () =>
+      fetchApi<{
+        status: 'ok' | 'partial' | 'error';
+        message?: string;
+        result?: {
+          new_count: number;
+          modified_count: number;
+          total_chunks: number;
+        };
+      }>('/api/corpus/apply-updates', { method: 'POST' }),
   },
 };

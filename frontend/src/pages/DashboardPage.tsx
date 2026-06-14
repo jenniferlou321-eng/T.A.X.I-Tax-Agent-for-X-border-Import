@@ -101,14 +101,25 @@ function DashboardPage() {
   const buffer = useDemoStore((s) => s.buffer)
   const selectedPreset = useDemoStore((s) => s.selectedPreset)  // PR 5 才删
 
-  const handleLoadCase = (preset: CasePreset) => {
+  const mountAgentWorkspace = async (preset: CasePreset) => {
+    try {
+      // 用户选择 case 时,同步把该 case 复制到固定 Agent 工作目录。
+      await api.agent.mountWorkspaceCase(preset.erpCaseId)
+    } catch (err) {
+      console.error('Failed to mount agent workspace:', err)
+    }
+  }
+
+  const handleLoadCase = async (preset: CasePreset) => {
     loadCase(preset)
+    await mountAgentWorkspace(preset)
     navigate('/cases/' + preset.id)
   }
 
-  const handleSwitchCase = (preset: CasePreset) => {
+  const handleSwitchCase = async (preset: CasePreset) => {
     if (window.confirm(`切换到 "${preset.title}"？当前数据将被清空。`)) {
       loadCase(preset)
+      await mountAgentWorkspace(preset)
     }
   }
 
