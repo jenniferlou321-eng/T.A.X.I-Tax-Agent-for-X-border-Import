@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
-import platform
 import socket
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 
 class FraudPreventionHeaders:
