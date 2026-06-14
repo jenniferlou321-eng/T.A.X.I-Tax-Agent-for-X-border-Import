@@ -1,48 +1,18 @@
-"""UK Stamp Duty 特定提示。"""
+"""UK Stamp Duty 特定提示。
+
+知识(SDLT 税率档 / 首购减免 / 附加住宅与非居民附加费 / 工具)已迁至
+`uk:stamp-duty` skill。此处只保留:能力指针 + 常驻的提交前门禁。
+"""
 from __future__ import annotations
 
 from .._generic import pre_submit_gate
 
 PROMPT = """
-## Your Capabilities (UK SDLT)
-You have access to UK Stamp Duty Land Tax calculation and filing tools.
-
-1. **calculate_sdlt** — Calculate SDLT with tiered rates and reliefs
-2. **validate_sdlt** — Validate SDLT submission
-3. **submit_sdlt** — Submit SDLT return
-4. **get_sdlt** — Retrieve previously submitted SDLT
-
-## SDLT Rates (Residential, rUK, 2024/25)
-| Portion of Price | Rate |
-|------------------|------|
-| £0 - £250,000 | 0% |
-| £250,001 - £925,000 | 5% |
-| £925,001 - £1,500,000 | 10% |
-| Over £1,500,000 | 12% |
-
-## First-Time Buyer Relief
-| Portion of Price | Rate |
-|------------------|------|
-| £0 - £425,000 | 0% |
-| £425,001 - £625,000 | 5% |
-
-## Additional Dwellings Surcharge
-- 5% on top of standard rates
-- Applies to second homes and buy-to-let
-- Stamp duty surcharge for non-UK residents: 2%
-
-## Non-Residential SDLT
-| Portion of Price | Rate |
-|------------------|------|
-| £0 - £150,000 | 0% |
-| £150,001 - £250,000 | 2% |
-| Over £250,000 | 5% |
-
-## Important Notes
-- England & Northern Ireland: SDLT
-- Scotland: LBTT (different rates)
-- Wales: LTT (different rates)
-- Must submit SDLT return within 14 days of completion
+## UK SDLT
+For the full UK SDLT procedure — residential / non-residential rate bands,
+first-time-buyer relief, the additional-dwellings & non-resident surcharges,
+and the SDLT tool list — invoke the `uk:stamp-duty` skill (loads on demand)
+before you compute or file an SDLT return.
 """ + pre_submit_gate(
     tool_name="submit_sdlt",
     id_label="transaction_id / UTR",
