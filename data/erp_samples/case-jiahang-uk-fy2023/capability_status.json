@@ -1,0 +1,59 @@
+{
+  "case_id": "case-jiahang-uk-fy2023",
+  "as_of": "2026-06-14",
+  "summary": {
+    "supported": 1,
+    "partial": 2,
+    "not_supported": 6,
+    "no_action_required": 1,
+    "filable_in_uk": 1,
+    "total_tax_types": 10
+  },
+  "rows": [
+    {
+      "tax_type": "VAT",
+      "status": "supported",
+      "evidence": "UK VAT 9-Box 全自动申报,HMRC MTD REST 真实联通"
+    },
+    {
+      "tax_type": "CT",
+      "status": "partial",
+      "evidence": "adapter 与 3/200 边际救济计算器在 backend/jurisdictions/uk/corporation_tax/ 实现;GovTalk XML 客户端与 CT600 表单未实现"
+    },
+    {
+      "tax_type": "PAYE",
+      "status": "partial",
+      "evidence": "PAYE/NIC 计提与代扣逻辑在 AgentToolSet 实现;RTI(FPS/EPS/EYU)XML 消息与 HMRC RTI endpoint 客户端未实现"
+    },
+    {
+      "tax_type": "DUTY",
+      "status": "not_supported",
+      "evidence": "C1-103 进口已计算 £7,875 关税;无 CDS/Tariff API 客户端,无 CIF→Duty 模块,无 C79 OCR"
+    },
+    {
+      "tax_type": "BR",
+      "status": "not_supported",
+      "evidence": "C1-111 已支付 £102,400 年额;无 VOA 估值 API,无 UBR×RV 计算器,无 Council bill 导入"
+    },
+    {
+      "tax_type": "AL",
+      "status": "not_supported",
+      "evidence": "C1-131a 计算 £30 应缴;无 0.5%×(工资-£3M)计算器,无与 PAYE 联报通道"
+    },
+    {
+      "tax_type": "WHT-I",
+      "status": "not_supported",
+      "evidence": "C1-109/109a/121a/b 共 4 笔 £27,778 利息,均扣 10% WHT;无 DTTP2 跟踪,无 CT600 supplementary 通道"
+    },
+    {
+      "tax_type": "WHT-R",
+      "status": "not_supported",
+      "evidence": "C1-110/110a 共 2 笔 £35,000 特许权,均扣 10% WHT;同上"
+    },
+    {
+      "tax_type": "WHT-D",
+      "status": "supported",
+      "evidence": "UK 不预扣股息税(0%,100% 控股豁免),无需申报"
+    }
+  ]
+}

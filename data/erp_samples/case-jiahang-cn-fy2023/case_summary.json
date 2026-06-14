@@ -1,0 +1,38 @@
+{
+  "case_id": "case-jiahang-cn-fy2023",
+  "title": "嘉汉跨境税务 — CN 母公司申报 (江苏嘉汉国际贸易有限公司)",
+  "company": "江苏嘉汉国际贸易有限公司",
+  "company_type": "cn_parent",
+  "uscc": "91320000MA1XXXXXX",
+  "fiscal_year": "FY2023",
+  "period": "2023-01-01~2023-12-31",
+  "currency": "CNY",
+  "scenario": "中资跨境集团 — CN 母公司年度申报",
+  "transaction_count": 64,
+  "tax_types_involved": ["VAT", "CIT", "FTC", "IIT", "STAMP", "PROPERTY", "SURTAX", "VAT-RENT", "VAT-PM"],
+  "related_case_ids": ["case-jiahang-uk-fy2023"],
+  "expected_annual_tax_cny": {
+    "vat": 2461500,
+    "cit_payable": 2032500,
+    "foreign_tax_credit": -43679,
+    "net_income_tax_expense": 1918821,
+    "surtax": 131144,
+    "iit_withheld": 1135000,
+    "stamp": 2100,
+    "property": 420000,
+    "vat_rent": 12000,
+    "vat_pm": 2400
+  },
+  "platform_support_summary": {
+    "supported": 0,
+    "partial": 0,
+    "not_supported": 9,
+    "filable_in_cn": 0
+  },
+  "expected_files": [
+    "erp_import.json (64 行 Pydantic ImportResult 兼容,21 sales + 43 purchases)",
+    "tax_requirements.json (9 个 CN 税种申报要求)",
+    "capability_status.json (TAXI 平台支持状态矩阵)",
+    "README.md (本案例说明)"
+  ]
+}

@@ -124,6 +124,8 @@ browser_profile/
 screenshots/
 # Real business data dumps (anonymized examples are OK)
 data/real/
+# Tax corpus (downloaded from upstream; re-pull via corpus_sync — mirror/ is the demo subset)
+data/tax_corpus/
 
 # ===== Submodule inner .git pointers (safety net) =====
 */.git

@@ -1,0 +1,35 @@
+{
+  "case_id": "case-jiahang-uk-fy2023",
+  "title": "嘉汉跨境税务 — UK 子公司申报 (Jiahang UK Holdings Ltd.)",
+  "company": "Jiahang UK Holdings Ltd.",
+  "company_type": "uk_subsidiary",
+  "vrn": "960606228",
+  "fiscal_year": "FY2023",
+  "period": "2023-01-01~2023-12-31",
+  "currency": "GBP",
+  "scenario": "中资跨境集团 — UK 子公司年度申报",
+  "transaction_count": 33,
+  "tax_types_involved": ["VAT", "CT", "PAYE", "DUTY", "BR", "AL", "WHT-I", "WHT-R", "WHT-D"],
+  "related_case_ids": ["case-jiahang-cn-fy2023"],
+  "expected_annual_tax_gbp": {
+    "vat_net": 23125,
+    "corporation_tax": 43950,
+    "payroll_total": 111662,
+    "import_duty": 7875,
+    "business_rates": 102400,
+    "apprenticeship_levy": 30,
+    "wht_withheld": 6278
+  },
+  "platform_support_summary": {
+    "supported": 1,
+    "partial": 2,
+    "not_supported": 6,
+    "no_action_required": 1
+  },
+  "expected_files": [
+    "erp_import.json (33 行 Pydantic ImportResult 兼容)",
+    "tax_requirements.json (10 个 UK 税种申报要求)",
+    "capability_status.json (TAXI 平台支持状态矩阵)",
+    "README.md (本案例说明)"
+  ]
+}

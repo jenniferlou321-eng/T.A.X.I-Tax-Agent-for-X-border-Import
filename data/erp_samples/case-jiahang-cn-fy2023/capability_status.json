@@ -1,0 +1,58 @@
+{
+  "case_id": "case-jiahang-cn-fy2023",
+  "as_of": "2026-06-14",
+  "summary": {
+    "supported": 0,
+    "partial": 0,
+    "not_supported": 9,
+    "filable_in_cn": 0,
+    "total_tax_types": 9
+  },
+  "rows": [
+    {
+      "tax_type": "CIT",
+      "status": "not_supported",
+      "evidence": "C1-041 已做完整汇算清缴(¥2,032,500 应纳,¥1,918,821 所得税费用),但无 BrowserChannel 适配;无 adapter 走通"
+    },
+    {
+      "tax_type": "FTC",
+      "status": "not_supported",
+      "evidence": "境外税收抵免 ¥43,679(足额);无 抵免限额法/中英协定第 22 条 应用模块"
+    },
+    {
+      "tax_type": "VAT",
+      "status": "not_supported",
+      "evidence": "全年应纳 ¥2,461,500;无 BrowserChannel(电子税务局);无 销项/进项认证;无 多档税率决策"
+    },
+    {
+      "tax_type": "SURTAX",
+      "status": "not_supported",
+      "evidence": "全年附加税约 ¥131,144;与 CN VAT 紧耦合,作为 CN VAT 的衍生模块"
+    },
+    {
+      "tax_type": "IIT",
+      "status": "not_supported",
+      "evidence": "全年个税代扣约 ¥1,135,000;无 综合所得汇算/专项附加扣除"
+    },
+    {
+      "tax_type": "STAMP",
+      "status": "not_supported",
+      "evidence": "C1-056 单笔 ¥2,100;无 购销合同税率映射"
+    },
+    {
+      "tax_type": "PROPERTY",
+      "status": "not_supported",
+      "evidence": "Q1-Q4 共 ¥420,000;无 从价/从租 计税模块"
+    },
+    {
+      "tax_type": "VAT-RENT",
+      "status": "not_supported",
+      "evidence": "C1-006/034 共 ¥12,000 简易计税;无 5% vs 9% 决策树"
+    },
+    {
+      "tax_type": "VAT-PM",
+      "status": "not_supported",
+      "evidence": "C1-006b/034b 共 ¥2,400 3% 征收率;无 现代服务业判定"
+    }
+  ]
+}
