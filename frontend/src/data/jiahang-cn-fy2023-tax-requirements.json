@@ -17,10 +17,10 @@
       "taxable_income_net": 8130000,
       "cit_payable": 2032500,
       "cit_rate": "25%",
-      "platform_support": "not_supported",
-      "action": "preview_only",
-      "missing": ["BrowserChannel(电子税务局)", "季度预缴计算", "汇算清缴 15+ 类调整项", "暂性差异 DTA 计算"],
-      "evidence": "C1-041 已做完整汇算清缴,4 笔分录(当期所得税 + DTA 确认 + 境外抵免 + DTA 转回)"
+      "platform_support": "supported",
+      "action": "ask_agent_to_compute",
+      "missing": [],
+      "evidence": "Demo supported: calculate_cn_cit_return(含境外抵免 + DTA)+ mock submit 已实现。【FY2023 整合·70 笔】C1-041 完整汇算清缴 + 4 笔 DTA 业务已建模(C1-000a 转回 + C1-040c/d/e 新增);期末 DTA ¥70,000。真实提交需 BrowserChannel(电子税务局)(路线图 P0)"
     },
     {
       "tax_type": "FTC",
@@ -33,10 +33,10 @@
       "overseas_tax_paid_total": 43679,
       "credit_limit": 390343,
       "credit_taken": 43679,
-      "platform_support": "not_supported",
-      "action": "preview_only",
-      "missing": ["抵免限额法(分国不分项)", "中英协定第 22 条消除双重征税条款应用"],
-      "evidence": "C1-041 已计算,UK WHT 利息 ¥13,334 + 特许权 ¥30,345 = ¥43,679 全额抵免"
+      "platform_support": "partial",
+      "action": "ask_agent_to_compute",
+      "missing": ["抵免限额法分国不分项明细拆分", "中英协定第 22 条双重征税消除条款专项计算"],
+      "evidence": "FTC 已内嵌在 calculate_cn_cit_return 输出(foreign_tax_credit / ftc_limit 字段)。UK WHT 利息 ¥13,334 + 特许权 ¥30,345 = ¥43,679 足额抵免。"
     },
     {
       "tax_type": "VAT",
@@ -45,10 +45,10 @@
       "annual_vat_output": 2732000,
       "annual_vat_input": 270500,
       "annual_vat_payable": 2461500,
-      "platform_support": "not_supported",
-      "action": "preview_only",
-      "missing": ["BrowserChannel(电子税务局)", "销项/进项发票认证", "多档税率(13%/9%/6%/5%/3%)决策", "月度申报自动化"],
-      "evidence": "C1-008/022/026 已做 2/5/6 月申报,全年销项 ¥2,732,000 - 进项 ¥270,500 = ¥2,461,500"
+      "platform_support": "supported",
+      "action": "ask_agent_to_compute",
+      "missing": [],
+      "evidence": "Demo supported: calculate_cn_vat_return(多档税率 output_tax/input_tax 13%/9%/6%/5%/3%)+ mock submit 已实现。【FY2023 整合·新增 C1-006b/034b(3% 物业)+C1-054/068(固定资产)】全年销项 ¥2,732,000 - 进项 ¥270,500 = ¥2,461,500。真实提交需 BrowserChannel(电子税务局)(路线图 P0)"
     },
     {
       "tax_type": "SURTAX",
@@ -59,18 +59,18 @@
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["与 CN VAT 联报通道", "三档附加率(7%/3%/2%)映射"],
-      "evidence": "C1-009/022a/027 已缴纳 2/5/H1 月:¥73,668 + ¥21,648 + ¥34,440 = ¥129,756(全年约 ¥131,144)"
+      "evidence": "【FY2023 整合·新增 C1-022a】C1-009(2月 ¥73,668)+C1-022a(5月 ¥21,648,新增)+C1-027(上半年 ¥34,440)+H2 月附加税(估 ¥1,388)≈ 全年 ¥131,144;基于实际缴纳 VAT × 12%"
     },
     {
       "tax_type": "IIT",
       "tax_name": "个人所得税(代扣代缴)",
       "period": "Monthly (12 个 filing)",
       "annual_payroll": 18000000,
-      "annual_iit_withheld": 1135000,
+      "annual_iit_withheld": 1170000,
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["综合所得汇算", "专项附加扣除", "工资薪金累进税率计算器"],
-      "evidence": "C1-003/016/021/025/035/039 已代扣 6 个月,合计约 ¥85k×6 + ¥220k(12月含年终奖) ≈ ¥1,135,000"
+      "evidence": "【FY2023 整合·6 个月明细已建模】C1-003(1月 ¥85k)+C1-016(4月 ¥90k)+C1-021(5月 ¥88k)+C1-025(6月 ¥92k)+C1-035(10月 ¥85k)+C1-039(12月 ¥220k 含年终奖) = ¥660k;另 6 个月约 ¥510k;全年合计 ≈ ¥1,170,000"
     },
     {
       "tax_type": "STAMP",
@@ -81,7 +81,7 @@
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["购销/合同/产权 税率映射", "应税凭证目录"],
-      "evidence": "C1-056:0.03% × ¥7,000,000 = ¥2,100(单笔)"
+      "evidence": "【FY2024 整合·2026-06-15 同步】C1-056:0.03% × ¥7,000,000 港口起重机销售合同 = ¥2,100(单笔);行为税,合同签订时一次性缴纳"
     },
     {
       "tax_type": "PROPERTY",
@@ -93,7 +93,7 @@
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["从价/从租计税", "城镇土地使用税并行", "季度申报通道"],
-      "evidence": "C1-013/028/031/033 已缴纳 Q1/Q2/Q3/Q4 各 ¥105,000 = ¥420,000/年"
+      "evidence": "【FY2023 整合·全部 4 季度】C1-013(Q1)+C1-028(Q2,新增)+C1-031(Q3,新增)+C1-033(Q4,新增)各 ¥105,000 = ¥420,000/年"
     },
     {
       "tax_type": "VAT-RENT",
@@ -104,7 +104,7 @@
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["5% vs 9% 决策树", "水电分摊"],
-      "evidence": "C1-006(2月 ¥3,000) + C1-034(Q4 ¥9,000) = ¥12,000/年"
+      "evidence": "C1-006(2月 ¥3,000)+C1-034(Q4 ¥9,000)=¥12,000/年;FY2023 整合保留;2016.4.30 前取得不动产 + 选择简易计税"
     },
     {
       "tax_type": "VAT-PM",
@@ -115,26 +115,47 @@
       "platform_support": "not_supported",
       "action": "preview_only",
       "missing": ["现代服务业判定", "小规模 vs 一般纳税人决策"],
-      "evidence": "C1-006b(2月 ¥600) + C1-034b(Q4 ¥1,800) = ¥2,400/年"
+      "evidence": "【FY2023 整合·独立列示】C1-006b(2月 ¥600)+C1-034b(Q4 ¥1,800)=¥2,400/年;小规模纳税人提供现代服务业(物业管理)"
+    },
+    {
+      "tax_type": "CIT-DTA",
+      "tax_name": "CN CIT DTA/DTL 暂时性差异循环",
+      "period": "FY2023",
+      "dta_beginning_cny": 37500,
+      "dta_reversal_cny": 37500,
+      "dta_new_recognized_cny": 70000,
+      "dta_ending_cny": 70000,
+      "temporary_diff_events": 4,
+      "platform_support": "not_supported",
+      "action": "preview_only",
+      "missing": ["暂时性差异 DTA/DTL 完整循环算子", "DTA 转回触发条件模型", "DTL 确认模型"],
+      "evidence": "【FY2023 整合·新增】4 笔 DTA 业务已建模:C1-000a 转回(¥37,500)+C1-040c 计提奖金(¥50,000)+C1-040d 坏账(¥12,500)+C1-040e 质保金(¥7,500);期末 DTA ¥70,000;无完整 DTA 转回触发条件模型与 DTL 算子(P2 路线图)"
     }
   ],
   "summary": {
-    "total_tax_types": 9,
-    "supported": 0,
-    "partial": 0,
-    "not_supported": 9,
-    "filable_in_cn": 0,
+    "total_tax_types": 10,
+    "supported": 2,
+    "partial": 1,
+    "not_supported": 7,
+    "filable_in_cn": 2,
     "annual_tax_due_cny": {
       "cit": 2032500,
       "foreign_tax_credit": -43679,
       "vat": 2461500,
       "surtax": 131144,
-      "iit": 1135000,
+      "iit": 1170000,
       "stamp": 2100,
       "property": 420000,
       "vat_rent": 12000,
-      "vat_pm": 2400
+      "vat_pm": 2400,
+      "dta_ending": 70000
     },
-    "net_income_tax_expense": 1918821
+    "net_income_tax_expense": 1918821,
+    "dta_movement_cny": {
+      "beginning": 37500,
+      "reversal": -37500,
+      "new_recognized": 70000,
+      "ending": 70000
+    }
   }
 }

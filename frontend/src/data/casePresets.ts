@@ -36,6 +36,12 @@ export interface CasePreset {
   kind?: 'standard' | 'case-jiahang' | 'doc-link';
   /** doc-link 专用: 点击后跳转到文档 URL(相对 /docs/) */
   entryRoute?: string;
+  /** true = 不在案例选择列表里展示(数据保留,仅隐藏 UI 入口) */
+  hidden?: boolean;
+  /** true/false = 提示:该 case 已被另一 agent 锁定/正在申报(并发场景)。
+   *  preset 上挂这个字段时,Card 显示「🔒 另一 agent 正在做」徽标,
+   *  AgentChatPage 的 welcome 消息也会提示 agent 处理冲突(等/取消/排队)。 */
+  concurrentAgent?: boolean;
 }
 
 const DEFAULT_CURRENCY = 'GBP';
@@ -63,6 +69,7 @@ export const casePresets: CasePreset[] = [
       tax_id_type: 'vrn',
     },
     erpCaseId: 'case-x-uk-standard',
+    hidden: true,
   },
 
   // ── Case A: 跨境 — UK 子公司申报 ────────────────────────
@@ -86,6 +93,7 @@ export const casePresets: CasePreset[] = [
       tax_id_type: 'vrn',
     },
     erpCaseId: 'case-a-uk-subsidiary',
+    hidden: true,
   },
 
   // ── Case B: 跨境 — CN 母 + UK 子(多管辖地) ────────────────
@@ -104,13 +112,14 @@ export const casePresets: CasePreset[] = [
     erpCaseId: 'case-b-cn-parent',
     erpCaseIds: ['case-b-cn-parent', 'case-a-uk-subsidiary'],  // CN + UK 双国
     groupDataRef: 'cnParentFiling',
+    hidden: true,
   },
 
   // ── Case J: 嘉汉跨境集团 — UK 子公司 FY2023(主线) ─────────
   {
     id: 'case-jiahang-uk-fy2023',
     title: '嘉汉集团 · UK 子公司 FY2023',
-    description: 'Jiahang UK Holdings Ltd FY2023:33 笔业务覆盖 9 个 UK 税种。UK CT £43,950(3/200 公式)+ WHT £6,278(利息+特许权 10% 中英协定)+ Q1-Q4 VAT 净应缴 £12,925。9 个税种中 1 支持 / 2 部分 / 5 待实现 / 1 不需申报,案例驱动平台完善路线图。',
+    description: 'Jiahang UK Holdings Ltd FY2023:33 笔业务覆盖 9 个 UK 税种。UK CT £43,950(3/200 公式)+ WHT £6,278(利息+特许权 10% 中英协定)+ Q1-Q4 VAT 净应缴 £12,925。9 个税种中 4 支持(VAT实提 + CT/PAYE/AL demo 计算+模拟提交)/ 4 待实现 / 1 不需申报。',
     icon: 'Globe2',
     kind: 'case-jiahang',
     // 嘉汉不是 9-Box 体系,lineItems 为空(数字在 erp_import.json metadata 与 tax_requirements.json)
@@ -124,11 +133,60 @@ export const casePresets: CasePreset[] = [
     erpCaseId: 'case-jiahang-uk-fy2023',
   },
 
+  // ── Case J: 嘉汉 UK 子公司 FY2023 — AL 错算测试版(故意保留 £30 错算) ─────────
+  {
+    id: 'case-jiahang-uk-fy2023-al-error',
+    title: '嘉汉集团 · UK 子公司 FY2023 · AL 错算测试版',
+    description: '⚠️ TEST FIXTURE:复制 case-jiahang-uk-fy2023,故意把 Apprenticeship Levy 应缴从正解 £0 改回旧版错算 £30(C1-131a: 0.5% × £3,006,000 - £15,000)。其他数据(VAT/CT/PAYE/WHT/SDLT/...)均与主 case 一致。用于测试 agent 能否独立发现 £30 与 £396k 工资矛盾、£396k < £3M 免税额 → 正解 £0,并主动指出错误。',
+    icon: 'AlertTriangle',
+    kind: 'case-jiahang',
+    lineItems: [],
+    taxpayer: {
+      name: 'Jiahang UK Holdings Ltd. (AL-error test)',
+      tax_id: '960606228',
+      tax_id_type: 'vrn',
+    },
+    erpCaseId: 'case-jiahang-uk-fy2023-al-error',
+  },
+
+  // ── Case J: 嘉汉 UK 子公司 FY2023 — Notes 实战训练版(不提供答案) ─────────
+  {
+    id: 'case-jiahang-uk-fy2023-notes-clean',
+    title: '嘉汉集团 · UK 子公司 FY2023 · Notes 实战训练版',
+    description: '🎯 TRAINING FIXTURE:与主 case-jiahang-uk-fy2023 数据完全一致(51 笔业务 / £1,338,000 销售净额 / £43,950 CT / £77,565 VAT / £396k 工资 / AL £0),但每行 erp_import.json 的 notes 字段已收敛为纯业务事实描述——不含纳税调整方向、不引用 CTA 2009 法律条文、不标注税会差异类型。Agent 必须独立调用 analyze_business_data / calculate_ct_return 识别 6 笔税会差异业务、独立判断 Apprenticeship Levy £0(£396k < £3M 免税额)、独立计算 VAT 4 季度 Box 1/4/5。适合作为实战基准。',
+    icon: 'GraduationCap',
+    kind: 'case-jiahang',
+    lineItems: [],
+    taxpayer: {
+      name: 'Jiahang UK Holdings Ltd. (notes-clean training)',
+      tax_id: '960606228',
+      tax_id_type: 'vrn',
+    },
+    erpCaseId: 'case-jiahang-uk-fy2023-notes-clean',
+  },
+
+  // ── Case J: 嘉汉 UK 子公司 FY2023 — 并发占用版(其他 agent 正在做) ─────────
+  {
+    id: 'case-jiahang-uk-fy2023-locked',
+    title: '嘉汉集团 · UK 子公司 FY2023 · 并发占用',
+    description: '同 case-jiahang-uk-fy2023 主数据(33 笔业务,UK CT/WHT/Q1-Q4 VAT/PAYE/SDLT/AL 全同),但 preset 上挂了 concurrentAgent 标志 — 模拟「另一 agent 正在做」状态。AgentChatPage 的欢迎消息会告诉 agent 该 case 已被锁定,看它如何处理(等/取消对方/排队/明确放弃)。',
+    icon: 'LockClosed',
+    kind: 'case-jiahang',
+    lineItems: [],
+    taxpayer: {
+      name: 'Jiahang UK Holdings Ltd. (locked)',
+      tax_id: '960606228',
+      tax_id_type: 'vrn',
+    },
+    erpCaseId: 'case-jiahang-uk-fy2023-locked',
+    concurrentAgent: true,
+  },
+
   // ── Case J: 嘉汉跨境集团 — CN 母公司 FY2023(主线) ─────────
   {
     id: 'case-jiahang-cn-fy2023',
     title: '嘉汉集团 · CN 母公司 FY2023',
-    description: '江苏嘉汉国际贸易有限公司 FY2023:64 笔业务覆盖 9 个 CN 税种。CIT 应纳 ¥2,032,500(8,000k + 280k 调增 - 150k 调减)× 25% + 境外抵免 ¥43,679(足额)+ DTA 期末 ¥70,000(期初 37.5k - 转回 37.5k + 新增 70k)。VAT 全年应纳 ¥2,461,500(销 2,732k - 进 270.5k)。9 个 CN 税种 0 支持 / 全部待实现。',
+    description: '江苏嘉汉国际贸易有限公司 FY2023:64 笔业务覆盖 9 个 CN 税种。CIT 应纳 ¥2,032,500(8,000k + 280k 调增 - 150k 调减)× 25% + 境外抵免 ¥43,679(足额)+ DTA 期末 ¥70,000(期初 37.5k - 转回 37.5k + 新增 70k)。VAT 全年应纳 ¥2,461,500(销 2,732k - 进 270.5k)。9 个 CN 税种 2 支持(CIT+VAT demo 计算+模拟提交)/ 1 部分(FTC 内嵌 CIT) / 6 待实现。',
     icon: 'Building2',
     kind: 'case-jiahang',
     lineItems: [],
@@ -156,6 +214,7 @@ export const casePresets: CasePreset[] = [
       tax_id_type: 'doc',
     },
     erpCaseId: 'case-jiahang-capability', // 仅为 validIds 白名单
+    hidden: true,
   },
 ];
 

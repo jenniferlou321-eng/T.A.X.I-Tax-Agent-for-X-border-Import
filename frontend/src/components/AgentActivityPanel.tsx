@@ -91,7 +91,9 @@ export default function AgentActivityPanel({
 
   return (
     <div className={embedded ? 'space-y-1' : 'ml-11 fade-in'}>
-      <details open>
+      {/* 默认折叠:仅在流式执行(有 activeStep)时自动展开,完成/历史消息折叠。
+          summary 行始终显示当前状态,用户随时可手动展开看详情。 */}
+      <details open={!!activeStep}>
         <summary className="flex items-center gap-2 text-xs text-fg-dim cursor-pointer hover:text-fg select-none py-1.5">
           {activeStep ? (
             <>
@@ -134,8 +136,7 @@ export default function AgentActivityPanel({
                     {!isFinished && (
                       <span className="animate-pulse text-fg-dim">...</span>
                     )}
-                  </summary>
-                  <div className="mt-1 text-[11px] text-fg-dim bg-secondary/5 rounded-lg p-2 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  </summary>                  <div className="mt-1 text-[11px] text-fg-dim bg-secondary/5 rounded-lg p-2 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {content}
                   </div>
                 </details>
@@ -146,7 +147,7 @@ export default function AgentActivityPanel({
             const isRunning = entry.result === undefined
 
             return (
-              <details key={entry.id} open={isLatest}>
+              <details key={entry.id} open={isLatest && isRunning}>
                 <summary className="flex items-center gap-1.5 cursor-pointer text-xs select-none py-0.5 text-fg-dim hover:text-fg">
                   <WrenchIcon className="w-3 h-3 text-accent shrink-0" />
                   <span className="text-accent font-medium">
@@ -173,7 +174,7 @@ export default function AgentActivityPanel({
                   )}
 
                   {entry.result !== undefined && (
-                    <details open={isLatest}>
+                    <details open={false}>
                       <summary className="cursor-pointer text-fg-muted hover:text-fg select-none">
                         结果
                       </summary>

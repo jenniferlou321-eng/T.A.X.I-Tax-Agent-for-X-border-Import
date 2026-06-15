@@ -1,0 +1,64 @@
+{
+  "case_id": "case-jiahang-uk-fy2023",
+  "as_of": "2026-06-15",
+  "summary": {
+    "supported": 4,
+    "partial": 2,
+    "not_supported": 4,
+    "no_action_required": 1,
+    "filable_in_uk": 1,
+    "total_tax_types": 11
+  },
+  "rows": [
+    {
+      "tax_type": "VAT",
+      "status": "supported",
+      "evidence": "UK VAT 9-Box 全自动申报,HMRC MTD REST 真实联通(14 笔销售 + 4 季度 Box 1/4/5 已建模)"
+    },
+    {
+      "tax_type": "CT",
+      "status": "partial",
+      "evidence": "adapter 与 3/200 边际救济计算器在 backend/jurisdictions/uk/corporation_tax/ 实现;GovTalk XML 客户端与 CT600 表单未实现;£180,000 应税利润 → £43,950 CT 计算已验证"
+    },
+    {
+      "tax_type": "PAYE",
+      "status": "partial",
+      "evidence": "PAYE/NIC 计提与代扣逻辑在 AgentToolSet 实现(全年 £396k 工资 + £43,351 ER NIC);RTI(FPS/EPS/EYU)XML 消息与 HMRC RTI endpoint 客户端未实现"
+    },
+    {
+      "tax_type": "DUTY",
+      "status": "not_supported",
+      "evidence": "C1-103 进口已计算 £7,875 关税(CIF £157,500 × 5%);无 CDS/Tariff API 客户端,无 CIF→Duty 模块,无 C79 OCR;Import VAT £33,075 PVA 走 Box 4 抵扣"
+    },
+    {
+      "tax_type": "BR",
+      "status": "not_supported",
+      "evidence": "C1-111 全年汇总 £102,400 Business Rates + £144,000 办公场地租金;无 VOA 估值 API,无 UBR×RV 计算器,无 Council bill 导入"
+    },
+    {
+      "tax_type": "AL",
+      "status": "not_supported",
+      "evidence": "⚠️【OLD WRONG DATA — 故意保留的旧版错算】C1-131a 错算 £30 应缴(0.5% × £3,006,000 - £15,000);与 FY2023 真实 £396k 工资矛盾(£396k < £3M 免税额,正解应为 £0)。本 case 故意保留 £30 错值,用于测试 agent 能否发现该错误"
+    },
+    {
+      "tax_type": "WHT-I",
+      "status": "not_supported",
+      "evidence": "C1-109/109a/121a/b 共 4 笔 £27,778 利息,均扣 10% WHT £2,778;无 DTTP2 跟踪,无 CT600 supplementary 通道"
+    },
+    {
+      "tax_type": "WHT-R",
+      "status": "not_supported",
+      "evidence": "C1-110/110a 共 2 笔 £35,000 特许权,均扣 10% WHT £3,500;同上"
+    },
+    {
+      "tax_type": "WHT-D",
+      "status": "supported",
+      "evidence": "UK 不预扣股息税(0%,100% 控股豁免),无需申报;C1-120 £50,000 + C1-123 £80,000 = £130,000(原 C1-149a £40k 已删除)"
+    },
+    {
+      "tax_type": "CT-DIFF",
+      "status": "not_supported",
+      "evidence": "【FY2023 整合·新增 6 笔税会差异业务已建模】永久性 C1-214(客户娱乐 £12,000)+ 暂时性 C1-218(年末奖金 £15,000)+ C1-219(坏账 £8,000)+ C1-220(质保金 £10,000)+ C1-221(新贷款计提利息 £5,000)+ C1-119 AIA £30,000 调减;无完整 DTA/DTL 算子,无 CT600 永久性差异披露模板;净调增 £26,000"
+    }
+  ]
+}

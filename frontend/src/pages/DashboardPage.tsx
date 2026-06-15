@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ClockIcon,
@@ -97,6 +97,7 @@ function EmptyState() {
 
 function DashboardPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const loadCase = useDemoStore((s) => s.loadCase)
   const buffer = useDemoStore((s) => s.buffer)
   const selectedPreset = useDemoStore((s) => s.selectedPreset)  // PR 5 才删
@@ -110,9 +111,22 @@ function DashboardPage() {
     }
   }
 
+  /** 清空后端历史申报 + 刷新 dashboard 列表。
+   *  Demo 设计:每次换 case / 加载 case 都重置"已申报"状态,符合"本年还没报过"的设定。 */
+  const clearHistoricalFilings = async () => {
+    try {
+      await api.filings.clear()
+    } catch (err) {
+      console.error('Failed to clear historical filings:', err)
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['filings'] })
+    }
+  }
+
   const handleLoadCase = async (preset: CasePreset) => {
     loadCase(preset)
     await mountAgentWorkspace(preset)
+    await clearHistoricalFilings()
     navigate('/cases/' + preset.id)
   }
 
@@ -120,6 +134,7 @@ function DashboardPage() {
     if (window.confirm(`切换到 "${preset.title}"？当前数据将被清空。`)) {
       loadCase(preset)
       await mountAgentWorkspace(preset)
+      await clearHistoricalFilings()
     }
   }
 
@@ -183,7 +198,7 @@ function DashboardPage() {
       <div className="fade-in">
         <h2 className="text-lg font-semibold text-fg mb-3">快速演示场景</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {casePresets.map((preset) => (
+          {casePresets.filter((preset) => !preset.hidden).map((preset) => (
             <CasePresetCard
               key={preset.id}
               preset={preset}

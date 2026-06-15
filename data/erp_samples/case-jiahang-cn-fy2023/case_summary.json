@@ -7,9 +7,9 @@
   "fiscal_year": "FY2023",
   "period": "2023-01-01~2023-12-31",
   "currency": "CNY",
-  "scenario": "中资跨境集团 — CN 母公司年度申报",
-  "transaction_count": 64,
-  "tax_types_involved": ["VAT", "CIT", "FTC", "IIT", "STAMP", "PROPERTY", "SURTAX", "VAT-RENT", "VAT-PM"],
+  "scenario": "中资跨境集团 — CN 母公司年度申报(FY2023 整合版:21 sales + 49 purchases,共 70 笔,含 6 笔新增/整合)",
+  "transaction_count": 70,
+  "tax_types_involved": ["VAT", "CIT", "FTC", "IIT", "STAMP", "PROPERTY", "SURTAX", "VAT-RENT", "VAT-PM", "CIT-DTA"],
   "related_case_ids": ["case-jiahang-uk-fy2023"],
   "expected_annual_tax_cny": {
     "vat": 2461500,
@@ -21,18 +21,19 @@
     "stamp": 2100,
     "property": 420000,
     "vat_rent": 12000,
-    "vat_pm": 2400
+    "vat_pm": 2400,
+    "dta_ending": 70000
   },
   "platform_support_summary": {
     "supported": 0,
     "partial": 0,
-    "not_supported": 9,
+    "not_supported": 10,
     "filable_in_cn": 0
   },
   "expected_files": [
-    "erp_import.json (64 行 Pydantic ImportResult 兼容,21 sales + 43 purchases)",
-    "tax_requirements.json (9 个 CN 税种申报要求)",
-    "capability_status.json (TAXI 平台支持状态矩阵)",
-    "README.md (本案例说明)"
+    "erp_import.json (21 sales + 49 purchases,共 70 行,Pydantic ImportResult 兼容)",
+    "tax_requirements.json (10 个 CN 税种申报要求,含 CIT-DTA 新行)",
+    "capability_status.json (TAXI 平台支持状态矩阵,新增 CIT-DTA 行)",
+    "README.md (本案例说明,70 笔业务 / 6 笔新增)"
   ]
 }

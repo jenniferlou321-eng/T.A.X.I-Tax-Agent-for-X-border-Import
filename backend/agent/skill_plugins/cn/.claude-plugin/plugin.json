@@ -1,0 +1,5 @@
+{
+  "name": "cn",
+  "description": "China tax filing skills (VAT 增值税, CIT 企业所得税) for T.A.X.I. Each skill carries the rates, form structure, special rules and tool-call formats for one China tax type.",
+  "version": "0.1.0"
+}

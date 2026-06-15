@@ -114,10 +114,12 @@ def calculate_apprenticeship_levy(
     ]
 
     warnings: list[str] = []
-    if not is_annual and pay_bill * Decimal("12") < Decimal("3000000"):
+    annual_pay_bill = pay_bill if is_annual else pay_bill * Decimal("12")
+    if annual_pay_bill < Decimal("3000000"):
         warnings.append(
-            f"Annual pay bill £{pay_bill * 12:,.0f} is below the £3,000,000 threshold — "
-            f"Apprenticeship Levy not strictly required, but reported via EPS for transparency."
+            f"Annual pay bill £{annual_pay_bill:,.0f} is below the £3,000,000 threshold — "
+            f"Apprenticeship Levy is zero. Verify that total_pay_bill was derived from actual "
+            f"payroll transactions, not from a scenario estimate or narrative figure."
         )
 
     return CalculationResult(

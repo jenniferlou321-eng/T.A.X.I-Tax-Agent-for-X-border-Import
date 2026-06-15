@@ -20,6 +20,23 @@ from ..models.erp_models import (
 TOLERANCE_GBP = Decimal("0.50")
 
 
+def _is_eu_acquisition(t: PurchaseTransaction) -> bool:
+    """是否为 EU 取得(进 Box 2 VAT due + Box 9 EU goods)。
+
+    两种数据约定都接受:
+    - 显式 `is_eu_acquisition=True`(老式 CSV / 部分 case)
+    - `is_reverse_charge=True` 且 `is_eu=True`(嘉汉 case 的 T2-UK-EU-RC 约定)
+
+    EU 反向征收采购在 9-Box 上等同 EU acquisition:Box 2 申报 VAT due,
+    同额进 Box 4 抵扣(由 is_recoverable 单独判定,不在此谓词内),
+    Box 9 报货物净额。加 `is_eu` 限定是为了不误伤国内 CIS 建筑业反向征收
+    (is_eu=False),那类不进 Box 2 / Box 9。
+    """
+    if getattr(t, "is_eu_acquisition", False):
+        return True
+    return bool(getattr(t, "is_reverse_charge", False) and getattr(t, "is_eu", False))
+
+
 class ReconciliationDelta(BaseModel):
     """9-Box 差异报告"""
     box_diffs: dict[str, Decimal] = Field(default_factory=dict)
@@ -38,7 +55,7 @@ def compute_taxi_nine_box(
         Decimal("0"),
     )
     box2 = sum(
-        (t.vat_amount for t in purchases if t.is_eu_acquisition),
+        (t.vat_amount for t in purchases if _is_eu_acquisition(t)),
         Decimal("0"),
     )
     box3 = box1 + box2
@@ -56,7 +73,7 @@ def compute_taxi_nine_box(
     box7 = int(sum((t.net_amount for t in purchases), Decimal("0")))
     box8 = int(sum((t.net_amount for t in sales if t.is_eu), Decimal("0")))
     box9 = int(sum(
-        (t.net_amount for t in purchases if t.is_eu_acquisition),
+        (t.net_amount for t in purchases if _is_eu_acquisition(t)),
         Decimal("0"),
     ))
     return ERPNineBox(

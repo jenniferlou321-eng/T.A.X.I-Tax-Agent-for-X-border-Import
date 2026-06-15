@@ -13,6 +13,7 @@ import {
   TrashIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
   ChatBubbleOvalLeftIcon,
   BuildingOfficeIcon,
   MagnifyingGlassIcon,
@@ -125,7 +126,11 @@ function formatTime(iso: string) {
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function buildWelcomeMessage(caseTitle?: string, hasErpData?: boolean): ChatMessage {
+function buildWelcomeMessage(
+  caseTitle?: string,
+  hasErpData?: boolean,
+  concurrentAgent?: boolean,
+): ChatMessage {
   let content =
     '您好！我是 TaxAgent 智能报税助手。\n\n' +
     '我可以帮您：\n' +
@@ -139,6 +144,12 @@ function buildWelcomeMessage(caseTitle?: string, hasErpData?: boolean): ChatMess
     content += hasErpData
       ? 'ERP 数据已就绪,VRN 和期间信息已在 workspace 中 — 点击下方「分析当前帐套数据」一键开始,无需重复提供 VRN。'
       : 'ERP 数据正在加载中…稍候即可使用 Quick Action。'
+    if (concurrentAgent) {
+      content +=
+        '\n\n⚠️ **并发占用提示**:此 case 已被另一 agent 锁定/正在申报中。' +
+        '请先与用户确认策略 — 是等待对方完成、取消对方、还是改用「补申报 / 修正」路径。' +
+        '**不要**直接调用 submit_* 系列工具,以免与对方的提交冲突。'
+    }
   } else {
     content += '\n\n请先在 Dashboard 选择一个 Demo Case,或直接输入您的问题。'
   }
@@ -159,7 +170,11 @@ export default function AgentChatPage() {
   const currentCase = buffer?.preset ?? null
 
   const [messages, setMessages] = useState<ChatMessage[]>([
-    buildWelcomeMessage(currentCase?.title, !!buffer?.erpData),
+    buildWelcomeMessage(
+      currentCase?.title,
+      !!buffer?.erpData,
+      currentCase?.concurrentAgent,
+    ),
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -179,6 +194,12 @@ export default function AgentChatPage() {
   // AbortController 引用，组件卸载或重置时取消正在进行的流
   const abortRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // 消息滚动容器 + 「是否贴底」状态:用户上滑离开底部 → 暂停自动下滑;
+  // 再滑回底部 → 恢复自动下滑。stickToBottom 用 ref 存(滚动回调里读最新值,
+  // 不触发重渲染);atBottomUi 仅用于「跳到底部」按钮的显隐。
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const stickToBottomRef = useRef(true)
+  const [atBottomUi, setAtBottomUi] = useState(true)
 
   // ── Demo Case selection (from Dashboard / Preview) ──
   // buffer 已在组件顶部读取；currentCase = buffer?.preset
@@ -206,10 +227,28 @@ export default function AgentChatPage() {
   const [historySessions, setHistorySessions] = useState<HistorySession[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom — 仅当用户仍贴底时(stickToBottomRef)才自动下滑
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (stickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
+
+  // 监听滚动容器:判断用户是否贴底(留 80px 容差)。
+  // 上滑离底 → stickToBottom=false(暂停自动下滑);滑回底 → 恢复。
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const onScroll = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      const atBottom = dist < 80
+      stickToBottomRef.current = atBottom
+      setAtBottomUi(atBottom)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   // Handle initial message from URL
   useEffect(() => {
@@ -286,8 +325,16 @@ export default function AgentChatPage() {
     }
   }
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = useCallback((force = false) => {
+    // 流式过程中,只有用户仍贴底才自动下滑;force=true(如用户主动发消息)
+    // 强制拉到底并重新「贴底」。
+    if (force) {
+      stickToBottomRef.current = true
+      setAtBottomUi(true)
+    }
+    if (force || stickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [])
 
   // ── AG-UI 事件流式接收：按 type 派发 ──
@@ -695,6 +742,8 @@ export default function AgentChatPage() {
         status: 'done',
       },
     ])
+    // 用户主动发消息 → 强制拉到底并恢复「贴底」自动下滑
+    scrollToBottom(true)
 
     try {
       const response = await fetch(
@@ -806,7 +855,13 @@ export default function AgentChatPage() {
     abortRef.current?.abort()
     abortRef.current = null
     resetRunState()
-    setMessages([buildWelcomeMessage(currentCase?.title, !!buffer?.erpData)])
+    setMessages([
+      buildWelcomeMessage(
+        currentCase?.title,
+        !!buffer?.erpData,
+        currentCase?.concurrentAgent,
+      ),
+    ])
     setSessionId('')
     setIsLoading(false)
     setSampleData(null)
@@ -963,7 +1018,7 @@ export default function AgentChatPage() {
       </aside>
 
       {/* ── Main Chat Area ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-bg-surface">
           <div className="flex items-center gap-3">
@@ -1000,7 +1055,7 @@ export default function AgentChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {/* Case summary banner */}
           {currentCase && (
             <div className="card p-3 flex items-center gap-2 fade-in">
@@ -1138,6 +1193,18 @@ export default function AgentChatPage() {
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* 跳到底部:用户上滑离底时浮现,点击恢复贴底自动下滑 */}
+        {!atBottomUi && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-bg-surface border border-border shadow-lg text-xs text-fg-muted hover:text-fg hover:bg-bg-elevated transition-colors fade-in"
+            aria-label="跳到最新消息"
+          >
+            <ChevronDownIcon className="w-4 h-4" />
+            最新消息
+          </button>
+        )}
 
         {/* Input */}
         <div className="border-t border-border bg-bg-surface px-4 py-3">

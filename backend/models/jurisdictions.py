@@ -9,6 +9,9 @@ JURISDICTIONS: frozenset[str] = frozenset({"uk", "de", "cn", "fr", "testland"})
 
 TAX_TYPES: frozenset[str] = frozenset({
     "vat", "self_assessment", "corporation_tax", "paye", "stamp_duty",
+    # CN 用带前缀命名(与 UK 裸名不同),作为一等公民纳入白名单,
+    # 使 mount-all / prompt 装配 / skill 自检识别 CN 两税种。
+    "cn_vat", "cn_cit",
 })
 
 

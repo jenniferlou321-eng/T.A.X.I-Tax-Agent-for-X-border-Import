@@ -26,6 +26,13 @@ from backend.services.corpus_sync import (
     compare_corpus,
 )
 
+# Demo staging helper. check-updates auto-stages (holds back a curated set of
+# REAL obscure-topic sources — inheritance tax / CGT / trusts — see the script)
+# whenever the diff would otherwise be empty, so the "模拟收到上游更新" button
+# always surfaces something without anyone running a command first. Production
+# would replace this with a real upstream crawl writing the mirror.
+from scripts.build_demo_mirror import stage_demo
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/corpus", tags=["corpus"])
@@ -63,28 +70,44 @@ def _report_to_dict(report: DiffReport) -> dict[str, Any]:
 
 
 @router.get("/check-updates")
-async def check_updates() -> dict:
+async def check_updates(request: Request) -> dict:
     """Compare the mirror corpus against the local corpus.
 
+    DEMO behaviour: if the mirror is missing, or the diff is empty (e.g. the
+    previous batch was already applied), this auto-stages a fresh batch by
+    holding back a curated set of REAL obscure-topic sources from the local
+    corpus (see scripts/build_demo_mirror.py). That way every click of
+    "模拟收到上游更新" surfaces an update without anyone running a command.
+
     Returns:
-        {status: "no_mirror", message: "...", report: None}  if the mirror
-            file is missing (admin hasn't dropped one in).
-        {status: "ok", report: {...}}                          otherwise.
+        {status: "ok", report: {...}} — always, in the demo, with new+modified > 0.
+        {status: "error", ...}        — only on an unexpected failure.
     """
-    if not _MIRROR_CORPUS.exists():
-        return {
-            "status": "no_mirror",
-            "message": (
-                f"Mirror file not found. Drop chunks_with_tags.jsonl into "
-                f"{_MIRROR_CORPUS.parent}/ and try again."
-            ),
-            "report": None,
-        }
+
+    def _diff() -> DiffReport | None:
+        if not _MIRROR_CORPUS.exists():
+            return None
+        return compare_corpus(_LOCAL_CORPUS, _MIRROR_CORPUS)
+
+    def _is_empty(r: DiffReport | None) -> bool:
+        return r is None or (r.summary.new_count + r.summary.modified_count) == 0
 
     try:
-        report: DiffReport = compare_corpus(_LOCAL_CORPUS, _MIRROR_CORPUS)
+        report = _diff()
+        if _is_empty(report):
+            # Re-stage from the clean baseline → hold back the curated set →
+            # write the mirror, then reload the in-memory store so the held-back
+            # content disappears from agent search until the user applies it.
+            stage_demo(_LOCAL_CORPUS, _MIRROR_CORPUS)
+            store = getattr(request.app.state, "knowledge_store", None)
+            if store is not None and hasattr(store, "reload"):
+                try:
+                    store.reload()
+                except Exception:
+                    logger.exception("knowledge_store.reload() failed after staging")
+            report = _diff()
     except Exception as e:
-        logger.exception("compare_corpus failed")
+        logger.exception("check_updates failed")
         return {"status": "error", "message": f"Compare failed: {e}", "report": None}
 
     return {"status": "ok", "report": _report_to_dict(report)}

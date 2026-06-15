@@ -54,9 +54,11 @@ export default function CasePreviewPage() {
     const reqLoader =
       buffer?.preset?.id === 'case-jiahang-uk-fy2023'
         ? import('../data/jiahang-uk-fy2023-tax-requirements.json')
-        : buffer?.preset?.id === 'case-jiahang-cn-fy2023'
-          ? import('../data/jiahang-cn-fy2023-tax-requirements.json')
-          : Promise.resolve(null)
+        : buffer?.preset?.id === 'case-jiahang-uk-fy2023-al-error'
+          ? import('../data/jiahang-uk-fy2023-al-error-tax-requirements.json')
+          : buffer?.preset?.id === 'case-jiahang-cn-fy2023'
+            ? import('../data/jiahang-cn-fy2023-tax-requirements.json')
+            : Promise.resolve(null)
     reqLoader.then((mod: any) => {
       if (active && mod) {
         setTaxRequirements((mod.default || mod).filings || [])
@@ -132,7 +134,7 @@ export default function CasePreviewPage() {
 
       {/* Case B / Case J (CN) 专用:CN 集团数字汇总卡 */}
       {buffer.preset.groupDataRef && (
-        <CnGroupSummaryCard ref={buffer.preset.groupDataRef} />
+        <CnGroupSummaryCard dataRef={buffer.preset.groupDataRef} />
       )}
 
       {/* jiahang 专用 4 折叠区(默认首个展开) */}

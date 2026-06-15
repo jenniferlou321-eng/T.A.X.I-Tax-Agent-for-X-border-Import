@@ -461,7 +461,10 @@ class UKVATAgentToolSet(AgentToolSet):
                 "description": (
                     "Calculate UK VAT Return 9-box values from pre-aggregated line items. "
                     "Use this when you already have category-level totals. For raw invoice data, "
-                    "use `analyze_business_data` first."
+                    "use `analyze_business_data` first. **PVA support**: include a line item "
+                    "with `category: \"pva_import_vat\"` for non-EU imports using Postponed "
+                    "VAT Accounting (HMRC Notice 702/9) — the amount is added to BOTH Box 1 "
+                    "(VAT due) and Box 4 (input VAT reclaim), net zero on Box 5."
                 ),
                 "input_schema": {
                     "type": "object",
@@ -472,9 +475,10 @@ class UKVATAgentToolSet(AgentToolSet):
                                 "JSON array of line items, e.g. "
                                 "'[{\"category\":\"vat_due_sales\",\"amount\":2500.00,\"currency\":\"GBP\"}]'. "
                                 "Each item: category (one of vat_due_sales, vat_due_acquisitions, "
-                                "vat_reclaimed_purchases, total_sales_ex_vat, total_purchases_ex_vat, "
-                                "total_goods_supplied_eu, total_goods_acquired_eu), "
-                                "amount (number, GBP), currency (default 'GBP')."
+                                "vat_reclaimed_purchases, pva_import_vat, total_sales_ex_vat, "
+                                "total_purchases_ex_vat, total_goods_supplied_eu, total_goods_acquired_eu), "
+                                "amount (number, GBP), currency (default 'GBP'). "
+                                "`pva_import_vat` is added to both Box 1 and Box 4 (HMRC Notice 702/9)."
                             ),
                         },
                     },
@@ -586,7 +590,10 @@ class UKVATAgentToolSet(AgentToolSet):
                     "field-name format (vat_due_sales, total_sales_ex_vat, etc.) - pass "
                     "this directly to `validate_vat_return` / `submit_vat_return` as the "
                     "`return_data` argument. Also returns `nine_box_legacy` (box1_xxx style) "
-                    "for one release as backwards compatibility."
+                    "for one release as backwards compatibility. **PVA support**: import "
+                    "transactions with `pva_eligible: true` or `pva_used: true` (HMRC Notice "
+                    "702/9) are auto-detected and the deferred Import VAT is added to BOTH "
+                    "Box 1 and Box 4 (net zero on Box 5)."
                 ),
                 "input_schema": {
                     "type": "object",

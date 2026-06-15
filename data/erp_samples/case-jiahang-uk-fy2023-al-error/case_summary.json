@@ -1,0 +1,45 @@
+{
+  "case_id": "case-jiahang-uk-fy2023-al-error",
+  "title": "嘉汉跨境税务 — UK 子公司申报 (AL 错算测试版)",
+  "company": "Jiahang UK Holdings Ltd.",
+  "company_type": "uk_subsidiary",
+  "vrn": "960606228",
+  "fiscal_year": "FY2023",
+  "period": "2023-01-01~2023-12-31",
+  "currency": "GBP",
+  "scenario": "⚠️ OLD WRONG DATA — 故意保留的旧版 Apprenticeship Levy 错算测试用例:case-jiahang-uk-fy2023 的复制版,只把 AL 应缴从正解 £0 改回旧版错算 £30(C1-131a: 0.5% × £3,006,000 - £15,000 = £30),其他数据与主 case 完全一致。用于测试 agent 能否发现该错算并指出 £396k < £3M 免税额应得 £0。",
+  "transaction_count": 51,
+  "tax_types_involved": ["VAT", "CT", "PAYE", "DUTY", "BR", "WHT-I", "WHT-R", "WHT-D", "CT-DIFF"],
+  "related_case_ids": ["case-jiahang-cn-fy2023", "case-jiahang-uk-fy2023"],
+  "expected_annual_tax_gbp": {
+    "vat_net": 77565,
+    "corporation_tax": 43950,
+    "payroll_total": 131351,
+    "import_duty": 7875,
+    "business_rates": 102400,
+    "apprenticeship_levy": 30,
+    "apprenticeship_levy_incorrect": true,
+    "apprenticeship_levy_correct_value": 0,
+    "wht_withheld": 6278
+  },
+  "expected_annual_accounting_gbp": {
+    "accounting_profit": 154000,
+    "permanent_diff_addback": 12000,
+    "temporary_diff_addback": 38000,
+    "aia_capital_allowance": -30000,
+    "taxable_profit": 180000,
+    "corporation_tax": 43950
+  },
+  "platform_support_summary": {
+    "supported": 4,
+    "partial": 2,
+    "not_supported": 4,
+    "no_action_required": 1
+  },
+  "expected_files": [
+    "erp_import.json (14 sales + 37 purchases,共 51 行,Pydantic ImportResult 兼容)",
+    "tax_requirements.json (11 个 UK 税种申报要求,AL 行故意保留 £30 错算)",
+    "capability_status.json (TAXI 平台支持状态矩阵,AL 行 evidence 标注 ⚠️ OLD WRONG)",
+    "README.md (本案例说明,AL 行标记 OLD WRONG DATA 测试用例)"
+  ]
+}

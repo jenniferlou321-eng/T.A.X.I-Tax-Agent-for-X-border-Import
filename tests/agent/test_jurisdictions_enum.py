@@ -10,6 +10,7 @@ def test_tax_types_frozenset():
     assert isinstance(TAX_TYPES, frozenset)
     assert TAX_TYPES == frozenset({
         "vat", "self_assessment", "corporation_tax", "paye", "stamp_duty",
+        "cn_vat", "cn_cit",
     })
 
 

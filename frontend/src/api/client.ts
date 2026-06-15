@@ -88,6 +88,11 @@ export const api = {
   },
   filings: {
     list: () => fetchApi<{ filings: FilingResult[]; total: number }>('/api/filings/'),
+    clear: () =>
+      fetchApi<{ status: string; cleared_filings: number; cleared_audit_entries: number; removed_log_files: number }>(
+        '/api/filings/clear',
+        { method: 'POST' }
+      ),
     get: (id: string) => fetchApi<FilingResult>(`/api/filings/${id}`),
     preview: (body: unknown) =>
       fetchApi<{ calculation: CalculationResult; validation: ValidationResult; can_submit: boolean }>(

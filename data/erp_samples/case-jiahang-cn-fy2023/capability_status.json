@@ -1,12 +1,12 @@
 {
   "case_id": "case-jiahang-cn-fy2023",
-  "as_of": "2026-06-14",
+  "as_of": "2026-06-15",
   "summary": {
     "supported": 0,
     "partial": 0,
-    "not_supported": 9,
+    "not_supported": 10,
     "filable_in_cn": 0,
-    "total_tax_types": 9
+    "total_tax_types": 10
   },
   "rows": [
     {
@@ -22,37 +22,42 @@
     {
       "tax_type": "VAT",
       "status": "not_supported",
-      "evidence": "全年应纳 ¥2,461,500;无 BrowserChannel(电子税务局);无 销项/进项认证;无 多档税率决策"
+      "evidence": "全年应纳 ¥2,461,500;无 BrowserChannel(电子税务局);无 销项/进项认证;无 多档税率(13%/9%/5%/3%)决策树;FY2023 整合新增 C1-006b/034b(3% 物业)+C1-054/068(固定资产)已建模"
     },
     {
       "tax_type": "SURTAX",
       "status": "not_supported",
-      "evidence": "全年附加税约 ¥131,144;与 CN VAT 紧耦合,作为 CN VAT 的衍生模块"
+      "evidence": "全年附加税约 ¥131,144(基于实际缴纳 VAT × 12%);FY2023 整合新增 C1-022a(5 月 ¥21,648);与 CN VAT 紧耦合,作为 CN VAT 的衍生模块"
     },
     {
       "tax_type": "IIT",
       "status": "not_supported",
-      "evidence": "全年个税代扣约 ¥1,135,000;无 综合所得汇算/专项附加扣除"
+      "evidence": "全年个税代扣约 ¥1,170,000(50 人 × 12 月 + ¥500k 年终奖);无 综合所得汇算/专项附加扣除;FY2023 整合 6 个月明细已建模"
     },
     {
       "tax_type": "STAMP",
       "status": "not_supported",
-      "evidence": "C1-056 单笔 ¥2,100;无 购销合同税率映射"
+      "evidence": "FY2024 整合新增 C1-056 单笔 ¥2,100(港口起重机销售合同 0.03%);无 购销合同税率映射"
     },
     {
       "tax_type": "PROPERTY",
       "status": "not_supported",
-      "evidence": "Q1-Q4 共 ¥420,000;无 从价/从租 计税模块"
+      "evidence": "FY2023 整合全部 4 季度 C1-013/028/031/033 各 ¥105,000 = ¥420,000/年;无 从价/从租 计税模块"
     },
     {
       "tax_type": "VAT-RENT",
       "status": "not_supported",
-      "evidence": "C1-006/034 共 ¥12,000 简易计税;无 5% vs 9% 决策树"
+      "evidence": "C1-006(2月 ¥3,000)+C1-034(Q4 ¥9,000)=¥12,000/年;FY2023 整合保留;无 5% vs 9% 决策树"
     },
     {
       "tax_type": "VAT-PM",
       "status": "not_supported",
-      "evidence": "C1-006b/034b 共 ¥2,400 3% 征收率;无 现代服务业判定"
+      "evidence": "FY2023 整合独立列示:C1-006b(2月 ¥600)+C1-034b(Q4 ¥1,800)=¥2,400/年;无 现代服务业判定"
+    },
+    {
+      "tax_type": "CIT-DTA",
+      "status": "not_supported",
+      "evidence": "【FY2023 整合·新增】4 笔 DTA 业务已建模:C1-000a 转回(¥37,500)+C1-040c 计提奖金(¥50,000)+C1-040d 坏账(¥12,500)+C1-040e 质保金(¥7,500);期末 DTA ¥70,000;无完整 DTA 转回触发条件模型与 DTL 算子"
     }
   ]
 }

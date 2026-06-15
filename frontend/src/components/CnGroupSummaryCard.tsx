@@ -3,7 +3,7 @@ import { BanknotesIcon, BuildingLibraryIcon, DocumentChartBarIcon, ScaleIcon } f
 import type { CnParentFilingRef } from '../data/casePresets';
 
 interface CnGroupSummaryCardProps {
-  ref: 'cnParentFiling' | 'jiahangCnFiling';
+  dataRef: 'cnParentFiling' | 'jiahangCnFiling';
 }
 
 interface CnParentFiling {
@@ -23,11 +23,10 @@ export default function CnGroupSummaryCard(props: CnGroupSummaryCardProps) {
 
   useEffect(() => {
     let active = true;
-    // 动态加载:cnParentFiling 或 jiahangCnFiling
-    const jsonPath = props.ref === 'jiahangCnFiling'
-      ? '../data/jiahangCnFiling.json'
-      : '../data/cnParentFiling.json';
-    import(jsonPath).then((mod) => {
+    const loader = props.dataRef === 'jiahangCnFiling'
+      ? import('../data/jiahangCnFiling.json')
+      : import('../data/cnParentFiling.json');
+    loader.then((mod) => {
       if (active) setData(mod as unknown as CnParentFiling);
     });
     return () => {

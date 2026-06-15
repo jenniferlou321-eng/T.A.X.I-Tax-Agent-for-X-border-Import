@@ -228,6 +228,56 @@ async def list_filings(
     return {"filings": filings, "total": len(filings)}
 
 
+@router.post("/clear")
+async def clear_filings(request: Request) -> dict:
+    """清空所有历史申报(Demo 用:换 case / 重新加载时调一次,避免污染下一次演示)。
+
+    清三处:
+      1. in_memory_filings(本进程 store)
+      2. Orchestrator.audit 的内存 entries(防 get_trail 还能查到)
+      3. logs/audit/*.json(防重启后冒出)
+    """
+    import logging
+    from pathlib import Path
+
+    logger = logging.getLogger(__name__)
+
+    cleared = len(in_memory_filings)
+    in_memory_filings.clear()
+
+    # 清 audit log(内存 + 磁盘)。Orchestrator 可能不是 app.state 里的实例
+    # (不同 router 各 new 了一个),统一清 process-local 文件 + 内存。
+    audit_cleared = 0
+    try:
+        audit = getattr(request.app.state.orchestrator, "audit", None)
+        if audit is not None and hasattr(audit, "_entries"):
+            audit_cleared = len(audit._entries)
+            audit._entries.clear()
+    except Exception as e:
+        logger.warning("clear_filings: failed to clear in-memory audit entries: %s", e)
+
+    files_removed = 0
+    try:
+        log_dir = Path("logs/audit")
+        if log_dir.exists():
+            for fp in log_dir.glob("*.json"):
+                fp.unlink()
+                files_removed += 1
+    except Exception as e:
+        logger.warning("clear_filings: failed to remove audit log files: %s", e)
+
+    logger.info(
+        "clear_filings: cleared %d in-memory filings, %d audit entries, %d log files",
+        cleared, audit_cleared, files_removed,
+    )
+    return {
+        "status": "ok",
+        "cleared_filings": cleared,
+        "cleared_audit_entries": audit_cleared,
+        "removed_log_files": files_removed,
+    }
+
+
 # ── Tax Filing Obligations (Multi-jurisdiction) ──
 
 @router.get("/obligations/{country}/{tax_type}")

@@ -84,7 +84,13 @@ class VATSummary:
         }
 
     def to_line_items(self) -> list[dict]:
-        """转换为供 calculate_vat_return 工具使用的 line_items 格式"""
+        """转换为供 calculate_vat_return 工具使用的 line_items 格式
+
+        注意: PVA (Postponed VAT Accounting) 已直接计入 box1 / box4
+        (见 import_pva 分支), 此处不再单独发 pva_import_vat 行,
+        避免双重计入。计算器 `calculate_uk_vat` 仍支持
+        `pva_import_vat` 类别(供 agent 直接调用的场景)。
+        """
         return [
             {"category": "vat_due_sales", "amount": str(self.box1_vat_due_sales), "currency": "GBP"},
             {"category": "vat_due_acquisitions", "amount": str(self.box2_vat_due_acquisitions), "currency": "GBP"},
@@ -187,6 +193,24 @@ def calculate_vat_return_from_raw(data: dict) -> VATSummary:
             summary.import_net += net
             summary.import_vat += vat
             summary.box4_vat_reclaimed += vat
+            summary.box7_total_purchases += int(net)
+
+        elif inv_type == "import_pva":
+            # PVA (Postponed VAT Accounting): non-EU 进口 VAT 不在海关缴纳,
+            # 而是在 UK VAT Return 中双向申报 (Box 1 VAT due + Box 4 input VAT).
+            # Net effect on Box 5 = 0, but 必须在 9-Box 中明确显示以满足
+            # HMRC Notice 702/9 对账要求. 参见
+            # backend/jurisdictions/uk/import_duty/calculator.py:101-110.
+            # vat 字段携带递延的 Import VAT 金额;net 字段是 duty-inclusive
+            # 货物价值(此处入 Box 7 用 FOB + freight = CIF £157,500 口径,
+            # 不含关税 7,875 — 关税单走 DUTY tax_type).
+            summary.import_net += net
+            summary.import_vat += vat
+            # Box 1: PVA 是 VAT due (尽管未实付)
+            summary.box1_vat_due_sales += vat
+            # Box 4: PVA 是可抵扣进项税
+            summary.box4_vat_reclaimed += vat
+            # Box 7: 货物净值入采购
             summary.box7_total_purchases += int(net)
 
         elif inv_type == "eu_acquisition":
@@ -389,6 +413,22 @@ def generate_analysis_report(data: dict, summary: VATSummary) -> dict:
                 "vat_reclaimable": float(summary.import_vat),
                 "notes": "Import VAT reclaimed via C79 certificate. Included in Box 4 and Box 7.",
             },
+            "import_pva": {
+                "count": len(purchases_by_type.get("import_pva", [])),
+                "net_total": float(sum(
+                    (Decimal(str(p.get("net", 0))) for p in purchases_by_type.get("import_pva", [])),
+                    Decimal("0"),
+                )),
+                "vat_deferred": float(sum(
+                    (Decimal(str(p.get("vat", 0))) for p in purchases_by_type.get("import_pva", [])),
+                    Decimal("0"),
+                )),
+                "notes": (
+                    "PVA (Postponed VAT Accounting) per HMRC Notice 702/9: "
+                    "non-EU import VAT NOT paid at customs; reported in VAT Return "
+                    "as Box 1 (VAT due) + Box 4 (input VAT). Net effect on Box 5 = 0."
+                ),
+            },
             "eu_acquisition": {
                 "count": len(purchases_by_type.get("eu_acquisition", [])),
                 "net_total": float(summary.eu_acquisition_net),
@@ -449,6 +489,16 @@ def generate_analysis_report(data: dict, summary: VATSummary) -> dict:
                 "rule": "Import VAT (C79)",
                 "description": "Import VAT paid at customs is reclaimable with C79 certificate. Customs duty is not reclaimable.",
                 "applies_to": "Box 4, Box 7",
+            },
+            {
+                "rule": "PVA (Postponed VAT Accounting)",
+                "description": (
+                    "Non-EU imports using PVA: Import VAT NOT paid at customs. "
+                    "Must be reported on VAT Return as Box 1 (VAT due, even if "
+                    "postponed) + Box 4 (input VAT reclaim). Net effect on Box 5 = 0, "
+                    "but both boxes must agree for HMRC reconciliation."
+                ),
+                "applies_to": "Box 1, Box 4, Box 7",
             },
             {
                 "rule": "EU Acquisition",
@@ -518,10 +568,17 @@ def _importresult_to_raw_row(row: dict, side: str) -> dict:
         out["type"] = t
     else:
         # 采购侧
-        if tax_code == "T2":
+        # PVA (Postponed VAT Accounting) 优先检测 — 独立于 tax_code 精确匹配。
+        # 本案例 tax_code 带后缀(如 'T8-UK-IMPORT'),精确 == 'T8' 匹配不到,
+        # 所以 PVA flag 必须先于 tax_code 分支判断, 才能在带后缀场景触发。
+        pva_flag = row.get("pva_eligible") or row.get("pva_used")
+        if tax_code == "T2" or tax_code.startswith("T2-"):
             t = "eu_acquisition"
-        elif tax_code == "T8":
-            t = "import"
+        elif tax_code == "T8" or tax_code.startswith("T8-"):
+            t = "import_pva" if pva_flag else "import"
+        elif pva_flag:
+            # 兜底: 任何带 PVA flag 的进口(即使 tax_code 不是 T8)
+            t = "import_pva"
         elif tax_code == "T0":
             if row.get("is_recoverable") is False:
                 t = "exempt"  # 包含 non_recoverable（业务招待）
@@ -533,8 +590,16 @@ def _importresult_to_raw_row(row: dict, side: str) -> dict:
 
     # 算法读 net / vat；ImportResult 用 net_amount / vat_amount
     out.setdefault("net", row.get("net_amount", 0))
-    out.setdefault("vat", row.get("vat_amount", 0))
-    out.setdefault("vat_gbp", row.get("vat_amount", 0))
+    # PVA 场景: 海关未实付 VAT (vat_amount=0), 但需把递延的
+    # pva_import_vat 作为算法可读的 vat 字段传下去, 让 import_pva
+    # 分支能加到 Box 1 + Box 4.
+    if out.get("type") == "import_pva":
+        pva_vat = row.get("pva_import_vat") or row.get("vat_amount", 0)
+        out.setdefault("vat", pva_vat)
+        out.setdefault("vat_gbp", pva_vat)
+    else:
+        out.setdefault("vat", row.get("vat_amount", 0))
+        out.setdefault("vat_gbp", row.get("vat_amount", 0))
     out.setdefault("net_gbp", row.get("net_amount", 0))
     # algorithm 也读 is_eu_acquisition（EU 采购特殊处理）
     out.setdefault("is_eu_acquisition", row.get("is_eu_acquisition", False))

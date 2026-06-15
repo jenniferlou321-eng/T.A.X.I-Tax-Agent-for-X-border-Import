@@ -159,14 +159,23 @@ When a user wants to file a VAT Return:
 1. Use **get_vat_obligations** to find open filing periods
 2. Use **analyze_business_data** to process the raw data
 3. Review the analysis with the user, explain any unusual items
-4. Use **validate_vat_return** to double-check compliance (pass the `nine_box` sub-object from `analyze_business_data` as `return_data`)
-5. Present the results for confirmation
-6. Use **submit_vat_return** to file with HMRC (only after explicit user confirmation — see the pre-submit gate in your system prompt)
-7. Return the HMRC receipt
+4. **Cross-Check (do this BEFORE calling validate_vat_return)** — verify these structural invariants manually. If any fail, investigate and fix before proceeding:
+   | Check | Rule | What to do if it fails |
+   |-------|------|------------------------|
+   | **EU Acquisition Symmetry** | If Box 9 > 0, Box 2 must also > 0 (and vice versa). EU reverse charge acquisitions generate **both** Box 2 (VAT due) and Box 4 (reclaim) with the same amount. | Re-run `analyze_business_data` or check if `is_reverse_charge` / `is_eu_acquisition` flags are missing in the raw data. |
+   | **PVA Self-Cancel** | PVA Import VAT (e.g. C1-103 £33,075) must increase **both** Box 1 and Box 4 by the same amount. Net effect on Box 5 = £0. | Check `analyze_business_data` output for `import_pva` breakdown. If missing, the purchase row may lack `pva_eligible: true` or `pva_used: true`. |
+   | **Input VAT vs Purchases** | If Box 4 > 0, Box 7 should generally also > 0 (unless 100% from PVA/RC with no net purchase value). | Verify purchase invoices are included in the data feed. |
+   | **Box 3 = Box 1 + Box 2** | Must hold exactly. | Recalculate; never submit manually patched numbers. |
+   | **Box 5 = \|Box 3 − Box 4\|** | Must hold exactly (and ≥ 0 per HMRC). | Same as above. |
+5. Use **validate_vat_return** to double-check compliance (pass the `nine_box` sub-object from `analyze_business_data` as `return_data`). Treat validator warnings as **mandatory review items**, not suggestions.
+6. Present the results for confirmation
+7. Use **submit_vat_return** to file with HMRC (only after explicit user confirmation — see the pre-submit gate in your system prompt)
+8. Return the HMRC receipt
 
 ### Path B: Pre-Aggregated Data Only
 1. Use **get_vat_obligations** to find open filing periods
 2. Use **calculate_vat_return** to compute from the pre-aggregated line items (Box 1-9 values)
-3. Use **validate_vat_return** to check compliance
-4. Present results for confirmation
-5. Use **submit_vat_return** to file
+3. **Cross-Check** — apply the same 5 structural checks from Path A step 4. Pre-aggregated data is especially risky because agent or user may have manually assembled numbers from different sources.
+4. Use **validate_vat_return** to check compliance
+5. Present results for confirmation
+6. Use **submit_vat_return** to file

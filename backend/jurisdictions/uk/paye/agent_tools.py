@@ -204,18 +204,45 @@ class UKPAYEAgentToolSet(AgentToolSet):
         """计算 UK Apprenticeship Levy：0.5% × 薪资总额 - £15,000 年免税额
 
         Args:
-            total_pay_bill: 薪资总额（GBP）
+            total_pay_bill: 薪资总额（GBP），必须来自实际工资交易聚合
+            paye_verified_payroll: 从 PAYE 工资交易行（payroll line items）独立聚合的年工资总额，
+                用于交叉核验 total_pay_bill 的来源。必须与 total_pay_bill 的口径一致（均为年值）。
             levy_allowance_claimed: 免税额（默认 £15,000 年）
             is_annual: True = 输入是年总额；False = 月值（默认）
         """
         try:
             from .calculator import calculate_apprenticeship_levy as _calc_levy
 
+            total_pay_bill = Decimal(str(args.get("total_pay_bill", 0)))
             result = _calc_levy(
-                total_pay_bill=Decimal(str(args.get("total_pay_bill", 0))),
+                total_pay_bill=total_pay_bill,
                 levy_allowance_claimed=Decimal(str(args.get("levy_allowance_claimed", 15000))),
                 is_annual=bool(args.get("is_annual", False)),
             )
+
+            warnings = list(result.warnings)
+
+            # 交叉核验：要求 agent 同时提供从 PAYE 行聚合的年薪基数
+            paye_verified = args.get("paye_verified_payroll")
+            if paye_verified is None:
+                warnings.append(
+                    "paye_verified_payroll was not provided. Cannot verify that total_pay_bill "
+                    "matches actual payroll transactions. Supply the sum of gross wages from "
+                    "PAYE payroll line items to enable cross-check."
+                )
+            else:
+                paye_dec = Decimal(str(paye_verified))
+                annual_bill = total_pay_bill if bool(args.get("is_annual", False)) else total_pay_bill * 12
+                if paye_dec > Decimal("0"):
+                    ratio = annual_bill / paye_dec
+                    if ratio > Decimal("1.1") or ratio < Decimal("0.9"):
+                        warnings.append(
+                            f"MISMATCH: total_pay_bill (annualised £{annual_bill:,.0f}) differs from "
+                            f"paye_verified_payroll (£{paye_dec:,.0f}) by more than 10%. "
+                            f"Ensure total_pay_bill is derived from payroll transactions, not from a "
+                            f"narrative or scenario figure."
+                        )
+
             box_map = {b.category: float(b.amount) for b in result.breakdown}
             return tool_ok({
                 "success": True,
@@ -224,7 +251,7 @@ class UKPAYEAgentToolSet(AgentToolSet):
                 "gross_levy": box_map.get("gross_levy", 0),
                 "levy_allowance": box_map.get("levy_allowance", 0),
                 "apprenticeship_levy_payable": box_map.get("apprenticeship_levy_payable", 0),
-                "warnings": result.warnings,
+                "warnings": warnings,
             })
         except Exception as e:
             return tool_error(str(e))
@@ -259,16 +286,26 @@ class UKPAYEAgentToolSet(AgentToolSet):
             {
                 "name": "calculate_apprenticeship_levy",
                 "description": (
-                    "Calculate UK Apprenticeship Levy (0.5% of total pay bill, "
-                    "minus £15,000 annual allowance). Applies to employers with annual pay bill > £3 million. "
-                    "Reported via EPS (Employer Payment Summary)."
+                    "Calculate UK Apprenticeship Levy (0.5% of total pay bill, minus £15,000 annual allowance). "
+                    "Applies to employers with annual pay bill > £3 million. Reported via EPS. "
+                    "IMPORTANT: total_pay_bill must be the actual payroll figure derived from payroll "
+                    "transactions (e.g. sum of gross wages paid to employees), NOT a scenario narrative "
+                    "figure or an estimate. If the annual pay bill is below £3,000,000 the levy is zero "
+                    "and a warning is returned. "
+                    "You MUST also supply paye_verified_payroll (the sum of gross wages from PAYE payroll "
+                    "line items, as an annual figure) so the tool can cross-check that total_pay_bill is "
+                    "consistent with actual payroll transactions."
                 ),
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "total_pay_bill": {
                             "type": "string",
-                            "description": "Total pay bill in GBP. Default: monthly value (is_annual=false).",
+                            "description": "Total pay bill in GBP used for Levy calculation. Must come from actual payroll transactions.",
+                        },
+                        "paye_verified_payroll": {
+                            "type": "string",
+                            "description": "Annual gross payroll total independently summed from PAYE payroll line items. Used to cross-verify total_pay_bill.",
                         },
                         "levy_allowance_claimed": {
                             "type": "string",
@@ -279,7 +316,7 @@ class UKPAYEAgentToolSet(AgentToolSet):
                             "description": "True if total_pay_bill is an annual figure; False for monthly (default).",
                         },
                     },
-                    "required": ["total_pay_bill"],
+                    "required": ["total_pay_bill", "paye_verified_payroll"],
                 },
             },
         ]

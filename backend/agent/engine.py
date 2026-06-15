@@ -18,6 +18,7 @@ from typing import AsyncIterator, Optional
 import httpx  # 用于 SDK 不可用时直连 MiniMax /v1/messages
 
 from .prompts import get_system_prompt, get_multi_jurisdiction_prompt
+from backend.models.jurisdictions import is_valid_jurisdiction
 from .tools import (
     create_mcp_servers,
     get_allowlist_for,
@@ -216,20 +217,39 @@ def _all_mounted_slots(
     """mount-all:返回全部已挂载 (cc, tt) 段(给 system prompt 用)。
 
     active_slots 在前并保留其 workspace_path;其余已挂载税种补空 workspace。
+
+    只纳入 prompt 层能渲染的 (cc, tt)——即 is_valid_jurisdiction 为真者。
+    某些 adapter(如 CN)用带前缀的 tax_type(cn_cit / cn_vat),不在
+    TAX_TYPES 白名单、也没有 prompts/<cc>/<tt>.py 段;直接喂给
+    get_multi_jurisdiction_prompt 会抛 KeyError 崩掉整个会话。这里跳过并
+    告警,而不是让 mount-all 把不支持的税种卷进 system prompt。
     """
     out: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str]] = set()
+    skipped: list[tuple[str, str]] = []
     for s in active_slots:
         key = (s.jurisdiction, s.tax_type)
         if key in seen:
             continue
         seen.add(key)
+        if not is_valid_jurisdiction(s.jurisdiction, s.tax_type):
+            skipped.append(key)
+            continue
         out.append((s.jurisdiction, s.tax_type, s.workspace_path))
     for (cc, tt) in sorted(k for k in mcp_server_keys if k[0] != "global"):
         if (cc, tt) in seen:
             continue
         seen.add((cc, tt))
+        if not is_valid_jurisdiction(cc, tt):
+            skipped.append((cc, tt))
+            continue
         out.append((cc, tt, ""))
+    if skipped:
+        logging.getLogger(__name__).warning(
+            "mount-all 跳过无 prompt 段的已注册税种(MCP 工具仍挂载,但不进 "
+            "system prompt / namespace map):%s。如需启用,请在 TAX_TYPES 加入该 "
+            "tax_type 并新增 prompts/<cc>/<tt>.py。", sorted(set(skipped)),
+        )
     return out
 
 
@@ -702,16 +722,27 @@ class TaxAgentEngine:
                         "OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
                         "IS_SANDBOX": "1",
                         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+                        # 屏蔽 CLI 自带的 bundled/builtin skills(deep-research、loop、
+                        # simplify、verify、code-review 等)。这些 skill 烧录在 CLI
+                        # 二进制里(getSkills 的 builtinPluginSkills 类别),不走
+                        # setting_sources / CLAUDE_CONFIG_DIR / --plugin-dir,所以
+                        # setting_sources=[] 拦不住它们,只能用这个 env 开关。
+                        # 设为 "1" 后 init 的 skills 列表只剩我们的 uk:* 插件 skill。
+                        "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS": "1",
                     }.items()
                     if v
                 },
             }
             options_kwargs["model"] = self._provider.model
 
-            # Skill 插件:一个国家一个 local plugin。setting_sources=[] 会屏蔽
-            # .claude/skills 发现,但 plugins(--plugin-dir)独立于 setting_sources;
-            # skills="all" 让 SDK 把发现的插件 skill 全部启用,并自动把 `Skill`
-            # 工具追加进 allowed_tools(裸 Skill 覆盖所有 skill,无需粒度项)。
+            # Skill 插件:一个国家一个 local plugin。setting_sources=[] 屏蔽
+            # ~/.claude 与 project 的 .claude/skills + 已启用插件(host superpowers
+            # 等)发现;plugins(--plugin-dir)独立于 setting_sources 加载我们的
+            # uk 插件;skills="all" 启用所有"被发现"的 skill。但 CLI 自带的
+            # bundled/builtin skill 不在以上任何一类里(烧录在二进制),需上面
+            # env 里的 CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 才能彻底剔除,否则
+            # skills="all" 会把它们一并启用进 init 列表。
+            # skills="all" 还会自动把裸 `Skill` 工具追加进 allowed_tools。
             # 知识(税率/表结构/workflow)放在 skill body,渐进披露按需加载。
             _skill_plugins = _derive_skill_plugins(self._mcp_servers.keys())
             if _skill_plugins:

@@ -45,7 +45,7 @@
 | 项目 | 内容 |
 |---|---|
 | 税种 | UK VAT |
-| 案例金额 | Q1-Q4 VAT Return,其中 Q1 Box 5 = -£6,875, Q2 Box 5 = £20,000, Q3 Box 5 = £16,000, Q4 Box 5 = -£6,000 |
+| 案例金额 | 【FY2023 整合·基于 14 笔销售重算】Q1 Box 5 = +£26,925, Q2 Box 5 = +£18,000, Q3 Box 5 = +£21,640, Q4 Box 5 = +£11,000(全年应缴 £77,565) |
 | 当前状态 | ✅ 已支持 |
 | 现有能力 | UK VAT 9-Box 计算、校验、HMRC MTD REST API 提交 |
 | 后续计划 | 持续增强 ERP 分类、异常检测、C79 / PVA / reverse charge 自动识别 |
@@ -76,7 +76,7 @@ GovTalkClient 已实现并验证连通 HMRC Transaction Engine (返回 correlati
 | 项目 | 内容 |
 |---|---|
 | 税种 | PAYE & NIC |
-| 案例金额 | FY2023 工资总额约 £336,000,含 PAYE / Employee NIC / Employer NIC |
+| 案例金额 | 【FY2023 整合·全年 12 月汇总】工资总额 £396,000,Employer NIC £43,351;HMRC 申报总额 £131,351;无 Apprenticeship Levy |
 | 当前状态 | ✅ 已支持 |
 | 已有能力 | GovTalk XML 客户端 (FPS/EPS/EYU body builder)、HMRCPAYEService、mock/live toggle |
 | 后续计划 | 获取 Vendor ID；增强员工明细、税码、NI category 字段 |
@@ -130,7 +130,7 @@ PAYE RTI 三种消息类型 (FPS/EPS/EYU) 均已实现 GovTalk XML body builder�
 | 项目 | 内容 |
 |---|---|
 | 税种 | Apprenticeship Levy |
-| 案例金额 | 整合案例中为 £30 |
+| 案例金额 | 【FY2023 整合·£0 应缴】全年工资 £396k < £3M 免税额,无需缴纳(原案例 £30 系旧版 £336k 工资矛盾,已修订为 0) |
 | 当前状态 | ✅ 已支持 |
 | 已有能力 | Levy 计算器 (0.5% × pay bill − £15,000 allowance)、模板字段、EPS body 集成、agent tool |
 | 后续计划 | 增强连接公司共享 allowance 逻辑 |
@@ -179,7 +179,7 @@ PAYE RTI 三种消息类型 (FPS/EPS/EYU) 均已实现 GovTalk XML body builder�
 | 项目 | 内容 |
 |---|---|
 | 税种 | Dividend WHT |
-| 案例金额 | 股息合计 £130,000 或整合口径 £170,000,WHT 0% |
+| 案例金额 | 【FY2023 整合·£130,000】C1-120 £50,000 + C1-123 £80,000(原版 £170,000 含 C1-149a £40k,已删除),WHT 0% |
 | 协定 | 100% 控股,中英协定股息 0% |
 | 当前状态 | ✅ 可识别为不需申报 |
 | 优先级 | — |

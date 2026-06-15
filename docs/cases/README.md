@@ -8,8 +8,8 @@
 
 | 案例 ID | 公司主体 | 视角 | 期间 | 业务笔数 | 状态 | 文档 |
 |---|---|---|---|---:|---|---|
-| `case-jiahang-uk-fy2023` | Jiahang UK Holdings Ltd. | UK 子公司 | FY2023 | 36 | ✅ **主线** | [jiahang-capability-matrix.md](./jiahang-capability-matrix.md) |
-| `case-jiahang-cn-fy2023` | 江苏嘉汉国际贸易有限公司 | CN 母公司 | FY2023 | 62 | ✅ **主线** | [jiahang-capability-matrix.md](./jiahang-capability-matrix.md) |
+| `case-jiahang-uk-fy2023` | Jiahang UK Holdings Ltd. | UK 子公司 | FY2023 | 51 | ✅ **主线** | [jiahang-capability-matrix.md](./jiahang-capability-matrix.md) |
+| `case-jiahang-cn-fy2023` | 江苏嘉汉国际贸易有限公司 | CN 母公司 | FY2023 | 70 | ✅ **主线** | [jiahang-capability-matrix.md](./jiahang-capability-matrix.md) |
 | `cn-parent-uk-sub-q1-2026` | (TechFlow) | UK+CN 跨境 | 2026 Q1 | ~50 | 🟡 历史 | [cn-parent-uk-sub-q1-2026.md](./cn-parent-uk-sub-q1-2026.md) |
 
 > 注:TechFlow 三案例(`case-x-uk-standard` / `case-a-uk-subsidiary` / `case-b-cn-parent`)正在被嘉汉案例替代,清扫计划见 [jiahang-capability-matrix.md §附录 A](./jiahang-capability-matrix.md#附录-a-未来-techflow-清扫清单本轮不动)。
@@ -36,10 +36,10 @@
 # 列出所有 demo case
 curl http://localhost:8765/api/erp/cases
 
-# 加载嘉汉 UK FY2023 案例(36 笔)
+# 加载嘉汉 UK FY2023 案例(51 笔:14 sales + 37 purchases)
 curl http://localhost:8765/api/erp/cases/case-jiahang-uk-fy2023 | jq '.sales | length'
 
-# 加载嘉汉 CN FY2023 案例(62 笔)
+# 加载嘉汉 CN FY2023 案例(70 笔:21 sales + 49 purchases)
 curl http://localhost:8765/api/erp/cases/case-jiahang-cn-fy2023 | jq '.sales | length'
 ```
 
@@ -47,15 +47,15 @@ curl http://localhost:8765/api/erp/cases/case-jiahang-cn-fy2023 | jq '.sales | l
 
 ```
 data/erp_samples/
-├── case-jiahang-uk-fy2023/        ← UK 子公司 FY2023(36 笔)
-│   ├── erp_import.json            ← Pydantic ImportResult 兼容
-│   ├── tax_requirements.json      ← 报税要求(8 UK 税种)
-│   ├── capability_status.json     ← 平台能力状态
+├── case-jiahang-uk-fy2023/        ← UK 子公司 FY2023(51 笔,含 6 笔税会差异)
+│   ├── erp_import.json            ← Pydantic ImportResult 兼容(14 sales + 37 purchases)
+│   ├── tax_requirements.json      ← 报税要求(11 UK 税种 + 税会差异)
+│   ├── capability_status.json     ← 平台能力状态(含 CT-DIFF)
 │   ├── case_summary.json
 │   └── README.md
-├── case-jiahang-cn-fy2023/        ← CN 母公司 FY2023(62 笔)
+├── case-jiahang-cn-fy2023/        ← CN 母公司 FY2023(70 笔,含 4 笔 DTA + 6 笔新增)
 │   ├── erp_import.json
-│   ├── tax_requirements.json      ← 报税要求(10 CN 税种)
+│   ├── tax_requirements.json      ← 报税要求(10 CN 税种,含 CIT-DTA)
 │   ├── capability_status.json
 │   ├── case_summary.json
 │   └── README.md

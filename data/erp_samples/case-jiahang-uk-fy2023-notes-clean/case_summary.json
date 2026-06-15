@@ -1,0 +1,34 @@
+{
+  "case_id": "case-jiahang-uk-fy2023-notes-clean",
+  "title": "嘉汉跨境税务 — UK 子公司申报 (notes 实战训练版)",
+  "company": "Jiahang UK Holdings Ltd.",
+  "company_type": "uk_subsidiary",
+  "vrn": "960606228",
+  "fiscal_year": "FY2023",
+  "period": "2023-01-01~2023-12-31",
+  "currency": "GBP",
+  "scenario": "中资跨境集团 — UK 子公司年度申报(实战训练版)。本案例与 case-jiahang-uk-fy2023 主线数字一致(51 笔业务、£1,338,000 销售净额),但每行 erp_import.json 的 notes 字段已收敛为纯业务事实描述——不含纳税调整方向、不引用 CTA 2009 法律条文、不标注 tax-book-difference 类型。Agent 必须通过 analyze_business_data / calculate_ct_return 等工具独立识别 6 笔税会差异业务(C1-119/214/218/219/220/221)、独立判断 Apprenticeship Levy £0(£396k < £3M 免税额)、独立计算 VAT 4 季度 Box 1/4/5。",
+  "transaction_count": 51,
+  "tax_types_involved": ["VAT", "CT", "PAYE", "DUTY", "BR", "WHT-I", "WHT-R", "WHT-D"],
+  "related_case_ids": ["case-jiahang-cn-fy2023"],
+  "platform_support_summary": {
+    "supported": 0,
+    "partial": 0,
+    "not_supported": 0,
+    "no_action_required": 0
+  },
+  "expected_files": [
+    "erp_import.json (14 sales + 37 purchases,共 51 行,notes 仅含业务事实)",
+    "tax_requirements.json (与主线一致,含 11 个 UK 税种)",
+    "capability_status.json (与主线一致)",
+    "README.md (设计原则 + 与主 case 差异)"
+  ],
+  "notes_design_principles": [
+    "1. notes 仅描述业务事实:交易方/产品/金额/日期/凭证号/付款条件",
+    "2. 不含纳税调整方向:不写'调增/调减应税利润'、'应纳税额 +X'、'DTA 确认'",
+    "3. 不引用法律条文:不写'CTA 2009 §1298-1301 不可扣除'、'VATA 1994 第 25-28 条'",
+    "4. 不标注类型标签:不写'税会差异·永久性/暂时性'、'资本免税额 100%'",
+    "5. 数字不直接给答案:不写'基于 14 笔销售重算 £77,565'",
+    "6. tax_code 字段允许保留:Agent 需要它做 ERP 分类,但不依赖它识别差异"
+  ]
+}

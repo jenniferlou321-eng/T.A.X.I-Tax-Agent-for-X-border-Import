@@ -27,6 +27,20 @@ HMRC RTI (Real Time Information) tools for employers (namespace `mcp__tax_agent_
 - Claimed to reduce employer NICs
 - Cannot exceed total employer NICs for the year
 
+## Apprenticeship Levy (学徒税) — threshold tax, verify before reporting
+- Rate: **0.5% of the annual pay bill**, with a **£15,000 annual allowance**.
+- The allowance means the Levy is only payable when the annual pay bill
+  exceeds **£3,000,000** (0.5% × £3,000,000 = £15,000, fully offset).
+- **If the annual pay bill is ≤ £3,000,000, the Apprenticeship Levy is £0 and
+  there is nothing to report.**
+- ⚠️ **Always re-derive the annual pay bill from the actual payroll line items
+  before stating any Levy.** Do NOT accept a Levy figure that comes from a
+  `notes` field, a memo, or a pre-filled `annual_payable` if it is not backed
+  by the payroll transactions. A small employer (e.g. 8–10 staff, pay bill in
+  the low hundreds of thousands) owes **£0** — a non-zero Levy on such a case
+  is a red flag that the pay-bill figure was inflated past the £3M threshold.
+  Re-compute, flag the contradiction, and tell the user to verify manually.
+
 ## Payment Deadlines
 - Monthly PAYE payments: 22nd of following month (or 19th if paying by post)
 - Annual scheme: Quarterly or annually

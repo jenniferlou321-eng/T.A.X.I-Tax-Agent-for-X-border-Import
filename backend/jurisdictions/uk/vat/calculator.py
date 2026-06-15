@@ -65,7 +65,27 @@ def calculate_uk_vat(data: TaxData, mode: str = "recompute") -> CalculationResul
     box2 = line_map.get("vat_due_acquisitions", Decimal("0"))
     box3 = box1 + box2
     box4 = line_map.get("vat_reclaimed_purchases", Decimal("0"))
+    # PVA (Postponed VAT Accounting, HMRC Notice 702/9): 非欧盟进口 VAT
+    # 递延到 VAT Return 中双向申报. pva_import_vat 同时计入 Box 1 与 Box 4,
+    # 净 Box 5 不变(自对冲). 单独类别以便审计追溯.
+    pva_vat = line_map.get("pva_import_vat", Decimal("0"))
+    if pva_vat > 0:
+        box1 += pva_vat
+        box3 = box1 + box2
+        box4 += pva_vat
     box5 = abs(box3 - box4)  # HMRC: netVatDue must be positive
+
+    warnings: list[str] = []
+    if pva_vat > 0:
+        warnings.append(
+            f"PVA Import VAT: £{pva_vat:,.2f} added to Box 1 and Box 4 (net zero on Box 5). "
+            f"Per HMRC Notice 702/9, this is the required reporting for non-EU imports "
+            f"using Postponed VAT Accounting."
+        )
+    if (box3 - box4) < 0:
+        warnings.append(
+            "Net VAT due is negative (repayment due from HMRC) — Box 5 shown as positive per HMRC requirements"
+        )
 
     return CalculationResult(
         total_tax_due=box5,
@@ -76,11 +96,7 @@ def calculate_uk_vat(data: TaxData, mode: str = "recompute") -> CalculationResul
             BreakdownItem(category="vat_reclaimed_purchases", amount=box4),
             BreakdownItem(category="net_vat_due", amount=box5),
         ],
-        warnings=(
-            ["Net VAT due is negative (repayment due from HMRC) — Box 5 shown as positive per HMRC requirements"]
-            if (box3 - box4) < 0
-            else []
-        ),
+        warnings=warnings,
         discrepancy_report=None,
         compute_mode="recompute",
     )

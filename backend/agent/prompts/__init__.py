@@ -65,6 +65,10 @@ def get_multi_jurisdiction_prompt(
     parts = [_GENERIC_PROMPT_HEADER]
 
     # 2. Namespace Map — 单国也标注(统一体验)
+    # 2. Namespace Map — 单国也标注(统一体验)
+    # routing 规则核心: workspace 有内容的 jurisdiction 优先于关键词匹配
+    active_ws_slots = [s for s in slots if s[2]]  # workspace_path 非空
+
     if len(slots) > 1:
         parts.append("\n\n## Multi-Jurisdiction Namespace Map\n")
         parts.append(
@@ -86,6 +90,16 @@ def get_multi_jurisdiction_prompt(
             "For cross-jurisdiction questions, call tools from BOTH namespaces "
             "and present results side by side.\n"
         )
+        if active_ws_slots:
+            primary_cc, primary_tt, primary_ws = active_ws_slots[0]
+            parts.append(
+                f"\n**Workspace Priority:** The workspace `{primary_ws}` is active for "
+                f"`{primary_cc.upper()} {primary_tt.replace('_', ' ').title()}`. "
+                f"When the user does NOT explicitly name a country, you MUST default to "
+                f"this jurisdiction. Do NOT let the user's language (e.g. Chinese keywords) "
+                f"override the workspace jurisdiction. Only switch to a different jurisdiction "
+                f"if the user explicitly requests it by name.\n"
+            )
     else:
         cc, tt, ws = slots[0]
         ws_note = f" (workspace: `{ws}`)" if ws else ""
@@ -94,6 +108,13 @@ def get_multi_jurisdiction_prompt(
             f"{tt.replace('_', ' ').title()} "
             f"(tools: `mcp__tax_agent_{cc}_{tt}__*`){ws_note}\n"
         )
+        if ws:
+            parts.append(
+                f"\n**Workspace Priority:** An active workspace is mounted. "
+                f"When the user asks about tax filing without naming a specific country, "
+                f"you MUST use the `{cc.upper()}` jurisdiction. Do NOT let the user's "
+                f"language (e.g. Chinese keywords like '增值税') override this workspace.\n"
+            )
 
     # 3. 各管辖地 prompt 段
     for cc, tt, ws in slots:

@@ -1,4 +1,4 @@
-import { FileText, Building2, Building, CircleDot, CheckCircle, Globe2, Table, Sparkles, ExternalLink } from 'lucide-react';
+import { FileText, Building2, Building, CircleDot, CheckCircle, Globe2, Table, Sparkles, ExternalLink, AlertTriangle, Lock, GraduationCap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { CasePreset } from '../data/casePresets';
 
@@ -9,7 +9,7 @@ interface CasePresetCardProps {
 }
 
 const iconMap: Record<string, React.ElementType> = {
-  FileText, Building2, Building, Globe2, Table, Sparkles,
+  FileText, Building2, Building, Globe2, Table, Sparkles, AlertTriangle, Lock, GraduationCap,
 };
 
 export default function CasePresetCard({ preset, onLoad, isSelected = false }: CasePresetCardProps) {
@@ -63,6 +63,15 @@ export default function CasePresetCard({ preset, onLoad, isSelected = false }: C
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-accent bg-accent-muted px-2 py-0.5 rounded-full">
                   <CheckCircle className="w-3 h-3" />
                   已加载
+                </span>
+              )}
+              {preset.concurrentAgent && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-warning bg-warning-muted border border-warning/30 px-1.5 py-0.5 rounded"
+                  title="另一 agent 正在做此 case — 进入 agent 后会看到冲突提示"
+                >
+                  <Lock className="w-3 h-3" />
+                  其他 agent 正在做
                 </span>
               )}
             </div>
