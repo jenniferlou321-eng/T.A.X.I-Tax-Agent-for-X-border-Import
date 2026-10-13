@@ -2,6 +2,7 @@
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -132,7 +133,49 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health_check():
-        return {"status": "ok", "version": "0.1.0"}
+        return {
+            "status": "ok",
+            "version": "0.1.0",
+            "demo_mode": os.environ.get("TAXI_DEMO_MODE", "0").lower() in {"1", "true", "yes"},
+            "llm_mode": "live" if getattr(agent_engine, "api_key", "") else "mock",
+        }
+
+    # In a container/hosted demo, serve the compiled SPA from the same ASGI app.
+    # This keeps frontend routes, REST/SSE endpoints, and WebSocket routes on one
+    # origin and avoids a second reverse-proxy process. Local development keeps
+    # using Vite because frontend/dist does not normally exist there.
+    frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    frontend_index = frontend_dist / "index.html"
+    if frontend_index.is_file():
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+
+        resolved_dist = frontend_dist.resolve()
+
+        @app.get("/", include_in_schema=False)
+        async def frontend_root():
+            return FileResponse(frontend_index)
+
+        @app.get("/{frontend_path:path}", include_in_schema=False)
+        async def frontend_spa(frontend_path: str):
+            # API typos should remain API 404s rather than returning index.html.
+            if frontend_path == "api" or frontend_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="API endpoint not found")
+            if frontend_path in {"health", "docs", "redoc", "openapi.json"}:
+                raise HTTPException(status_code=404, detail="Endpoint not found")
+
+            candidate = (resolved_dist / frontend_path).resolve()
+            try:
+                candidate.relative_to(resolved_dist)
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Not found")
+
+            if candidate.is_file():
+                return FileResponse(candidate)
+            # Asset misses should stay 404s; client-side route misses need SPA shell.
+            if Path(frontend_path).suffix:
+                raise HTTPException(status_code=404, detail="Static asset not found")
+            return FileResponse(frontend_index)
 
     return app
 

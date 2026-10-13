@@ -366,10 +366,15 @@ class TaxAgentEngine:
         permission_mode: str = "bypassPermissions",
         kb_store: Optional['TaxKnowledgeStore'] = None,
     ):
-        # SDK provider 配置固定来自 agent_provider.local.json,不读父 shell 环境。
-        # 这样 Claude Code `/model` 或 shell export 的 ANTHROPIC_MODEL 不会污染后端。
+        # Hosted deployments can configure TAXI_ANTHROPIC_* explicitly. A missing
+        # provider is valid and selects the mock path for the public demo.
         self._provider = get_agent_provider_config()
         self.api_key = api_key or self._provider.api_key
+        self._strict_live = os.environ.get("TAXI_REQUIRE_LIVE_AGENT", "0") == "1"
+        if self._strict_live and not self.api_key:
+            raise RuntimeError("Live Agent requires TAXI_ANTHROPIC_API_KEY on the server")
+        if self._strict_live and not SDK_AVAILABLE:
+            raise RuntimeError("claude-agent-sdk is unavailable: full MCP Agent cannot start")
         self.cwd = cwd or os.getcwd()
         self.permission_mode = permission_mode
         self.sessions: dict[str, AgentSession] = {}
@@ -393,10 +398,12 @@ class TaxAgentEngine:
             if SDK_AVAILABLE:
                 self._mcp_servers = create_mcp_servers(registry, kb_store=kb_store)
 
-        # SDK 不可用时给出清晰提示
+        # Make the selected mode visible in service logs without leaking credentials.
         if not SDK_AVAILABLE:
             print("[WARN] claude-agent-sdk not installed. Engine runs in MOCK mode.")
             print("       Install: pip install claude-agent-sdk")
+        elif not self.api_key:
+            print("[INFO] No Agent provider configured. Engine runs in MOCK demo mode.")
 
     # ── Public API ──
 
@@ -512,6 +519,10 @@ class TaxAgentEngine:
                         yielded_anything = True
                         yield chunk
             except (asyncio.TimeoutError, TimeoutError):
+                if self._strict_live:
+                    yield {"__agui__": "step_end", "step_name": ""}
+                    yield "\n❌ 实时 Agent 请求超时，请稍后重试。本次没有执行模拟对话。\n"
+                    return
                 if not yielded_anything:
                     yield {"__agui__": "step_end", "step_name": ""}
                     yield ("\n⚠️ SDK 3 分钟未响应(可能是 Minimax 代理无响应),"
@@ -520,6 +531,8 @@ class TaxAgentEngine:
                         yield chunk
                     return
         elif self.api_key:
+            if self._strict_live:
+                raise RuntimeError("Live Agent requires Claude Agent SDK and MCP tools")
             # SDK 缺失但 provider config 可用 — 直接 httpx 调
             slots_as_tuples = [
                 (s.jurisdiction, s.tax_type, s.workspace_path)
@@ -537,6 +550,8 @@ class TaxAgentEngine:
             ):
                 yield chunk
         else:
+            if self._strict_live:
+                raise RuntimeError("Live Agent configuration is missing")
             async for chunk in self._mock_chat(session, enriched_message):
                 yield chunk
 
@@ -945,6 +960,17 @@ class TaxAgentEngine:
                     )
 
         except Exception as e:
+            if self._strict_live:
+                yield {"__agui__": "step_end", "step_name": ""}
+                logging.getLogger(__name__).exception("Live Agent MCP/SDK failure")
+                yield {"__agui__": "tool_unavailable", "reason": f"sdk_error: {type(e).__name__}"}
+                yield "\n❌ 实时 Agent 或工具调用失败，请稍后重试；没有生成模拟结果。\n"
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                session._client = None
+                return
             yield {"__agui__": "step_end", "step_name": ""}
             yield f"\n⚠️ SDK 不可用 ({type(e).__name__}: {str(e)[:80]}), 回退到 httpx 直连 MiniMax (无 MCP 工具)...\n"
             yield {"__agui__": "tool_unavailable", "reason": f"sdk_fallback: {type(e).__name__}: {str(e)[:120]}"}
@@ -1104,13 +1130,13 @@ class TaxAgentEngine:
         if has_non_uk and not any(s.jurisdiction == "uk" for s in session.jurisdictions):
             yield f"我是 TaxAgent 智能报税助手。\n\n"
             yield f"活跃管辖地: {jurisdictions_desc}\n"
-            yield f"注意: Mock 模式仅支持 UK VAT 演示。要体验其他管辖地的报税功能，\n"
-            yield f"请安装 claude-agent-sdk 并配置对应国家的 API 凭证。\n\n"
+            yield f"注意：当前招聘演示版的对话助手仅提供 UK VAT 脚本化示例；其他管辖地可体验页面内已实现的计算与模拟申报流程。\n"
+            yield f"如需真实模型推理，需由项目维护者配置受控的模型 API。\n\n"
             yield f"我可以帮您:\n"
             yield f"1. 查询待申报义务\n"
             yield f"2. 自动计算申报表\n"
             yield f"3. 验证数据合规性\n"
-            yield f"4. 提交申报\n"
+            yield f"4. 体验模拟申报流程（不会向税务机关提交）\n"
             yield {"__agui__": "step_end", "step_name": ""}
             return
 
@@ -1147,7 +1173,7 @@ class TaxAgentEngine:
             yield f"  免税采购: {len(exempt)} 笔 → 不计入\n\n"
 
             await asyncio.sleep(0.3)
-            yield "📋 HMRC 9-BOX VAT RETURN (基于 TechFlow Distribution Ltd Q1 数据)\n"
+            yield "📋 VAT 9-BOX 演示结果（固定样例数值；不代表对任意上传文件完成动态计算）\n"
             yield "=" * 40 + "\n"
             yield "  Box 1  VAT due on sales:        £42,520.00\n"
             yield "  Box 2  VAT due on acquisitions: £13,700.00\n"
@@ -1161,9 +1187,9 @@ class TaxAgentEngine:
             yield "  Box 9  Goods acquired from EU:  £ 68,500\n"
             yield "=" * 40 + "\n\n"
 
-            yield "💰 结果: 应付 HMRC £5,037.00\n\n"
-            yield "✅ 分析完成。\n\n"
-            yield "   要继续报税，请确认以上数据，我将为您提交至 HMRC。"
+            yield "💰 演示样例净应缴: £5,037.00\n\n"
+            yield "✅ 演示分析完成。\n\n"
+            yield "   注意：以上为固定演示样例结果，并非根据本次上传数据重新核算；确认后也只会执行模拟流程，不会向 HMRC 提交。"
             session.status = "confirming"
             yield {"__agui__": "step_end", "step_name": ""}
             return
@@ -1171,18 +1197,17 @@ class TaxAgentEngine:
         if "报税" in user_message or "filing" in msg_lower:
             if ws_prefix:
                 yield f"我来帮您完成英国 VAT 季度申报。\n\n{ws_prefix}\n"
-                yield "Mock 模式无法调用 HMRC API — 请切换到 SDK 模式执行真实申报。"
+                yield "当前为公开演示模式，不会调用 HMRC API。您可以在申报页面体验本地计算、校验和模拟提交流程。"
             else:
                 yield "我来帮您完成英国 VAT 季度申报。"
                 await asyncio.sleep(0.3)
-                yield "\n\n首先，请告诉我您的 VRN（VAT Registration Number），"
-                yield "或者上传您的销售/采购数据文件，"
-                yield "我将自动计算并提交申报。"
+                yield "\n\n您可以从页面中的 UK VAT 示例案例开始，查看本地计算、校验和模拟申报流程。"
+                yield "当前网站为演示环境，不会向 HMRC 提交真实申报。"
 
         elif "义务" in user_message or "obligations" in msg_lower:
-            yield "📋 查询 HMRC 申报义务...\n"
+            yield "📋 查询演示申报义务...\n"
             await asyncio.sleep(0.5)
-            yield "\n找到以下待申报期间：\n"
+            yield "\n以下为固定演示期间，并非实时 HMRC 查询结果：\n"
             yield "- Period Key: 24A1 (2026-01-01 ~ 2026-03-31)\n"
             yield "- Period Key: 24A2 (2026-04-01 ~ 2026-06-30)\n"
             yield "\n请选择要申报的期间。"
@@ -1198,7 +1223,7 @@ class TaxAgentEngine:
                 yield "Box 3 (Total VAT due): £2,500.00 ✅\n"
                 yield "Box 4 (VAT reclaimed): £1,200.00\n"
                 yield "Box 5 (Net VAT due): £1,300.00 ✅\n"
-                yield "\n应付 HMRC: £1,300.00"
+                yield "\n演示样例净应缴: £1,300.00（固定样例结果，非实时核算）"
 
         elif "提交" in user_message or "submit" in msg_lower:
             session.status = "confirming"
@@ -1206,33 +1231,30 @@ class TaxAgentEngine:
             yield "1. 数据准确无误\n"
             yield "2. 计算结果正确\n"
             yield "3. 您有权限代表该企业申报\n\n"
-            yield "确认后，我将提交至 HMRC。\n"
+            yield "确认后将执行模拟申报流程；不会向 HMRC 发送任何真实申报。\n"
             yield "[✅ 确认提交]"
 
         elif "确认" in user_message or "confirm" in msg_lower:
             session.status = "submitting"
-            yield "🚀 正在提交至 HMRC...\n\n"
+            yield "🚀 正在运行模拟申报流程...\n\n"
             await asyncio.sleep(1)
-            yield "✅ 申报成功！\n\n"
-            yield "HMRC 回执：\n"
-            yield "- Form Bundle Number: 321591334754\n"
-            yield "- Processing Date: 2026-06-02T12:00:00Z\n"
-            yield "- Payment Indicator: DD\n\n"
+            yield "✅ 演示申报完成（Mock 模式；未向 HMRC 提交）\n\n"
+            yield "模拟回执：\n"
+            yield "- Demo Receipt ID: DEMO-321591334754\n"
+            yield "- 示例处理时间: 2026-06-02T12:00:00Z\n"
+            yield "- 说明: 该回执仅用于展示交互流程，不代表税务机关受理。\n\n"
             session.status = "done"
 
         else:
             yield "我是 TaxAgent 智能报税助手。\n\n"
             if ws_prefix:
                 yield ws_prefix + "\n"
-            yield "我可以帮您：\n"
-            yield "1. 分析原始企业发票数据并自动计算 VAT Return\n"
-            yield "2. 查询 HMRC 待申报义务\n"
-            yield "3. 验证申报数据合规性\n"
-            yield "4. 提交 VAT Return 至 HMRC\n\n"
-            if ws_prefix:
-                yield "Mock 模式功能有限 — 请安装 SDK 并配置 API key 获得完整体验。"
-            else:
-                yield "5. 查询已提交的申报\n\n请告诉我您需要什么帮助？"
+            yield "我可以帮您体验：\n"
+            yield "1. 浏览企业发票数据分析示例\n"
+            yield "2. 查看演示申报义务\n"
+            yield "3. 体验申报数据校验与本地计算\n"
+            yield "4. 体验模拟申报流程（不会向税务机关提交）\n\n"
+            yield "当前为公开招聘演示模式；无模型密钥时，对话采用脚本化示例响应。申报回执为模拟数据，不代表税务机关受理。"
         yield {"__agui__": "step_end", "step_name": ""}
 
     # ── Helpers ──

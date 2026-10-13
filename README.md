@@ -126,6 +126,19 @@
 
 ---
 
+## 🌐 招聘演示版部署（Docker）
+
+仓库现在提供单容器部署配置：Docker 构建现有 React/Vite 前端，再由同一个 FastAPI 服务托管前端路由与 `/api` 接口，避免生产环境依赖 Vite 开发代理。默认 `TAXI_DEMO_MODE=1`、`HMRC_MODE=mock`，无 LLM 密钥也可启动演示模式。
+
+```bash
+docker build -t taxi-demo .
+docker run --rm -p 8000:8000 taxi-demo
+```
+
+打开 <http://localhost:8000>，健康检查为 <http://localhost:8000/health>。部署到 Render 可通过仓库根目录的 `render.yaml` 创建 Web Service。详细步骤、模型环境变量和演示范围见 [`DEPLOY_DEMO.md`](DEPLOY_DEMO.md)。
+
+注意：演示模式中的申报回执是模拟结果，不会提交真实税务申报。Render 免费服务可能休眠，且本地文件在重启后不会保留；这适合求职演示，不适合当作生产 SaaS 数据存储。
+
 ## 🚀 快速开始
 
 > 端口约定：后端 **8765**，前端 **9000**。生产模式下前端由
@@ -298,19 +311,15 @@ conda env remove -n taxagent && conda env create -f environment.yml
 - **`FraudPreventionHeaders` 缺失**：沙盒不强制，生产必须有，否则 HMRC
   直接拒。
 
-### Q6. 前端打包后样式丢了 / 页面"裸奔"
+### Q6. 前端打包后样式丢了 / 页面“裸奔”
 
-Tailwind v4 的 `@tailwindcss/vite` 插件要求 **Node 20+**。仓库
-`vite.config.build.ts` 默认禁用该插件以兼容 Node 16 的旧机器，代价是
-`dist/` 里没有编译后的 CSS。
+项目使用 Tailwind v3 + PostCSS。生产构建配置 `frontend/vite.config.build.ts`
+显式启用 `tailwindcss()` 和 `autoprefixer()`，Docker 部署会通过 `npm run build`
+生成包含设计系统样式的 `frontend/dist/`。如果构建后样式缺失，请优先检查
+`npm ci --legacy-peer-deps` 和 `npm run build` 日志，以及 `dist/assets/` 中的 CSS。
 
-修法（任选）：
-
-- **新机器 + Node 20+**：用 `vite.config.ts` 跑 `npm run build`（带
-  tailwindcss 插件），或把 `vite.config.build.ts` 里 `plugins: [react()]`
-  改成 `plugins: [react(), tailwindcss()]` 再 `npm run build`。
-- **继续用 Node 16**：维持 `vite.config.build.ts` 不变，UI 文字 / 交互
-  / 路由全能用，只是没有设计系统样式。
+`@tailwindcss/vite` 是 Tailwind v4 插件，本项目的生产构建不导入它，避免与当前
+Tailwind v3 / Vite 4 依赖组合冲突。
 
 ### Q7. 杀掉后台进程被沙箱拦下 / `kill` 报 blocked
 
@@ -371,7 +380,7 @@ pkill -f "uvicorn backend.main:app"
 ├── frontend/                        ← React 18 + Vite 4
 │   ├── src/                         ← 页面 / 组件 / API client
 │   ├── vite.config.ts               ← dev server（带 /api 代理）
-│   └── vite.config.build.ts         ← 生产 build（Node 16 兼容）
+│   └── vite.config.build.ts         ← 生产 build（Tailwind v3 + PostCSS）
 │
 ├── data/                            ← 脱敏样本 · erp_samples/
 ├── docs/                            ← 架构 / 部署 / 各国流程

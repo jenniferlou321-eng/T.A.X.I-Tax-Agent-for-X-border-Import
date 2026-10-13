@@ -5,8 +5,8 @@
 用法:
     from backend.agent import TaxAgentEngine
 
-    # Provider api_key/base_url/model 固定从 repo-root agent_provider.local.json 读取,
-    # 不读父 shell 的 ANTHROPIC_* 环境变量。
+    # Provider can read explicit TAXI_ANTHROPIC_* environment variables or the
+    # local gitignored agent_provider.local.json. Without credentials it uses mock mode.
     engine = TaxAgentEngine(
         cwd="/path/to/project",
         permission_mode="default",

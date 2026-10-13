@@ -36,7 +36,14 @@ class TaxKnowledgeStore:
 
     def __init__(self, base_path: str | None = None):
         self.base_path = Path(base_path) if base_path else Path(__file__).resolve().parent.parent.parent / "data" / "tax_knowledge"
-        self._corpus_path = self.base_path.parent / "tax_corpus" / "chunks_with_tags.jsonl"
+        # Production repositories may ship the small, curated demo corpus under
+        # tax_corpus_mirror/ while the larger synced corpus under tax_corpus/ is
+        # intentionally gitignored. Prefer the synced corpus when present and
+        # fall back to the tracked mirror so the hosted demo has searchable data.
+        data_dir = self.base_path.parent
+        primary_corpus = data_dir / "tax_corpus" / "chunks_with_tags.jsonl"
+        mirror_corpus = data_dir / "tax_corpus_mirror" / "chunks_with_tags.jsonl"
+        self._corpus_path = primary_corpus if primary_corpus.is_file() else mirror_corpus
         self._cache: dict[Tuple[str, str], List[KnowledgeSection]] = {}
         self._corpus_sections: dict[Tuple[str, str], List[KnowledgeSection]] = {}
         self._load_all()

@@ -5,10 +5,9 @@
 
 /* T.A.X.I. design system — Tailwind v3 syntax.
  *
- * We use Tailwind v3 (not v4) because v4 needs Node 20+ and the build host
- * only has Node 16. The design tokens are CSS variables so the same source
- * file powers both dark mode (default) and light mode (via
- * `html[data-theme="light"]`).
+ * Production builds compile Tailwind v3 through PostCSS. The design tokens
+ * are CSS variables so the same source file powers both dark mode (default)
+ * and light mode (via `html[data-theme="light"]`).
  *
  * Tailwind utility class names like `flex`, `p-3`, `min-h-screen`,
  * `bg-bg`, `text-fg-muted`, `border-border`, etc. are emitted by the

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: taxi-live-demo
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: TAXI_REQUIRE_LIVE_AGENT
+        value: "1"
+      - key: TAXI_DEMO_MODE
+        value: "0"
+      - key: HMRC_MODE
+        value: mock
+      - key: HMRC_SANDBOX
+        value: "true"
+      - key: TAXI_ANTHROPIC_BASE_URL
+        value: https://api.deepseek.com/anthropic
+      - key: TAXI_ANTHROPIC_MODEL
+        value: deepseek-flash
+      - key: TAXI_ANTHROPIC_API_KEY
+        sync: false

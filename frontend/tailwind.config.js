@@ -14,8 +14,8 @@
 // The "shadow-glow-primary" / "shadow-glow-accent" utilities come from a
 // custom box-shadow definition below — same trick as the colors.
 //
-// We deliberately do NOT use Tailwind v4's @theme syntax. v4 needs Node 20+
-// and the build host has only Node 16.
+// This project currently uses Tailwind v3 configuration and PostCSS. Keep
+// utility classes and CSS-variable-backed design tokens in one theme system.
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx,html}'],

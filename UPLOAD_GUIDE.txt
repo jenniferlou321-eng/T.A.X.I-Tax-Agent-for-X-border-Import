@@ -1,0 +1,25 @@
+T.A.X.I GitHub web update - 18 files
+
+NEW FILES (upload at repository root):
+.dockerignore
+DEPLOY_DEMO.md
+DEPLOY_LIVE_DEEPSEEK.md
+Dockerfile
+render.yaml
+
+MODIFIED FILES (replace existing contents at same path):
+README.md
+backend/agent/__init__.py
+backend/agent/engine.py
+backend/agent/provider_config.py
+backend/agent/tax_knowledge_store.py
+backend/main.py
+frontend/package-lock.json
+frontend/src/index.css
+frontend/src/layouts/Layout.tsx
+frontend/tailwind.config.js
+frontend/vite.config.build.ts
+pyproject.toml
+requirements.txt
+
+Do not upload API keys or .env files. Keep existing LICENSE unchanged.

@@ -175,6 +175,15 @@ function Layout() {
           </div>
         </header>
 
+        {/* Demo disclosure: the public portfolio deployment never files real tax returns. */}
+        <div className="border-b border-warning/20 bg-warning-muted/40 px-4 py-2 lg:px-6">
+          <p className="text-xs text-fg-muted">
+            <span className="font-semibold text-warning">演示环境</span>
+            <span className="mx-2">·</span>
+            请使用示例数据；默认 AI 对话为演示模式，申报回执为模拟结果，不会向税务机关提交真实申报。
+          </p>
+        </div>
+
         {/* Content */}
         <main className="flex-1 overflow-auto">
           <Outlet />
