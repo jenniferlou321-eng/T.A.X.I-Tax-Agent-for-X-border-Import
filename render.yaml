@@ -2,7 +2,7 @@ services:
   - type: web
     name: taxi-live-demo
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
